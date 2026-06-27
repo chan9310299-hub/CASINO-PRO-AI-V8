@@ -167,7 +167,9 @@ class RoadmapAIV4Tests(unittest.TestCase):
         history = ["P", "B"] * 4
         kwargs = _build_inputs(history)
         result = RoadmapAI(db=self.db).analyze(**kwargs, db=self.db)
-        self.assertEqual(len(result["voters"]), 5)
+        self.assertGreaterEqual(len(result["voters"]), 5)
+        names = {v.get("name") for v in result["voters"]}
+        self.assertIn("trend_ai", names)
 
     def test_empty_history_no_crash(self):
         result = RoadmapAI(db=self.db).analyze([], bigroad=[], bigeye=[], smallroad=[], cockroach=[], db=self.db)

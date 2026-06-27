@@ -12,6 +12,12 @@ from ai.confidence_v6 import compute_dynamic_confidence, voter_agreement_pct
 from ai.data_stats import get_data_counts
 from ai.losing_streak import compute_losing_streaks
 from ai.meta_ai import meta_ai_vote
+try:
+    from ai.v9_signals import collect_v9_signals
+    from ai.meta_vote_v9 import meta_vote_v9_decide
+except Exception:
+    collect_v9_signals = None
+    meta_vote_v9_decide = None
 from ai.pass_system import PASS_MESSAGE, evaluate_pass
 from ai.pattern_similarity import analyze_pattern_similarity
 from ai.prediction_engine import PredictionEngine
@@ -233,6 +239,40 @@ class RoadmapAI:
             is_pass = True
             pass_reason = pass_reason or PASS_MSG
 
+        v9_extra_reasons: List[str] = []
+        v9_quality_grade = None
+
+        if collect_v9_signals and meta_vote_v9_decide:
+            try:
+                v9_signals = collect_v9_signals(
+                    history, base, pattern_sim, current_streak,
+                    risk_level=risk["risk_level"],
+                    confidence=confidence,
+                    voters=voters,
+                    protection_enabled=protection_mode_enabled,
+                )
+                v9_decision = meta_vote_v9_decide(
+                    existing_voters=voters,
+                    v9_signals=v9_signals,
+                    db=db,
+                    sample_size=sample_size,
+                    protection_mode_enabled=protection_mode_enabled,
+                    prot_meta=prot_meta,
+                    road_agreement=road_agreement,
+                    risk_level=risk["risk_level"],
+                )
+                voters = v9_decision.get("voters") or voters
+                v9_extra_reasons = list(v9_decision.get("reasons") or [])
+                v9_quality_grade = v9_decision.get("quality_grade")
+                if v9_decision.get("pass_flag"):
+                    is_pass = True
+                    pass_reason = pass_reason or "v9 Meta AI — PASS"
+                elif v9_decision.get("prediction") in ("P", "B"):
+                    meta["prediction"] = v9_decision["prediction"]
+                    confidence = v9_decision.get("confidence", confidence)
+            except Exception:
+                pass
+
         if detect_unstable_pattern(len(pb), trend, conflict):
             if not is_pass:
                 is_pass = True
@@ -244,6 +284,9 @@ class RoadmapAI:
         for r in pattern_sim.get("reason") or []:
             if r not in merged_reason:
                 merged_reason.append(r)
+        for r in v9_extra_reasons:
+            if r not in merged_reason:
+                merged_reason.append(r)
         if conflict >= 0.35:
             msg = f"신호 충돌 감지 ({round(conflict * 100)}%)"
             if msg not in merged_reason:
@@ -253,6 +296,8 @@ class RoadmapAI:
         status = base.get("status", "")
         quality = _prediction_quality(confidence, risk["risk_level"], is_pass)
         quality_grade = grade_prediction(confidence, risk["risk_level"], road_agreement, is_pass)
+        if v9_quality_grade and not is_pass:
+            quality_grade = v9_quality_grade
 
         if is_pass:
             prediction = "PASS"

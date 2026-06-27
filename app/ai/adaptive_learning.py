@@ -30,6 +30,16 @@ LEARNING_SIGNAL_DEFAULTS: Dict[str, float] = {
     "small_road": 1.2,
     "cockroach_road": 1.2,
     "pattern_memory": 1.0,
+    "streak_ai": 1.2,
+    "chop_ai": 1.3,
+    "dragon_ai": 1.5,
+    "reversal_ai": 1.1,
+    "two_side_balance_ai": 1.0,
+    "road_consensus_ai": 1.4,
+    "memory_similarity_ai": 1.3,
+    "risk_filter_ai": 1.2,
+    "meta_vote_ai": 2.0,
+    "anti_six_loss_ai": 1.8,
 }
 
 SIGNAL_ALIASES = {

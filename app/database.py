@@ -43,6 +43,16 @@ LEARNING_SIGNAL_DEFAULTS = {
     "small_road": 1.2,
     "cockroach_road": 1.2,
     "pattern_memory": 1.0,
+    "streak_ai": 1.2,
+    "chop_ai": 1.3,
+    "dragon_ai": 1.5,
+    "reversal_ai": 1.1,
+    "two_side_balance_ai": 1.0,
+    "road_consensus_ai": 1.4,
+    "memory_similarity_ai": 1.3,
+    "risk_filter_ai": 1.2,
+    "meta_vote_ai": 2.0,
+    "anti_six_loss_ai": 1.8,
 }
 
 
@@ -56,6 +66,174 @@ class Database:
         except Exception:
             pass
         self.init_db()
+        try:
+            self.ensure_v5_tables()
+        except Exception:
+            pass
+        try:
+            self.ensure_learning_tables()
+        except Exception:
+            pass
+        try:
+            self.ensure_v6_tables()
+        except Exception:
+            pass
+
+    def ensure_v5_tables(self, cur=None):
+        """Backward-compatible V5 schema hook — no destructive changes."""
+        if cur is not None:
+            return
+        with self._connection() as conn:
+            conn.cursor()
+
+    def ensure_learning_tables(self, cur=None):
+        """Alias for adaptive learning tables (V3/V5 compatibility)."""
+        self.ensure_adaptive_learning_tables(cur)
+
+    def ensure_v6_tables(self, cur=None):
+        cursor = cur if cur is not None else self.conn.cursor()
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_v6_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hand_index INTEGER,
+                created_at TEXT NOT NULL,
+                risk_score REAL,
+                risk_level TEXT,
+                road_agreement REAL,
+                pattern_similarity REAL,
+                meta_score REAL,
+                pass_flag INTEGER DEFAULT 0,
+                losing_streak INTEGER DEFAULT 0,
+                prediction_quality TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_backtest_v6 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                window_size INTEGER NOT NULL,
+                accuracy REAL,
+                avg_losing_streak REAL,
+                max_losing_streak INTEGER,
+                pass_rate REAL,
+                win_count INTEGER,
+                loss_count INTEGER
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_optimizer_v6 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                optimization_time TEXT NOT NULL,
+                old_weights_json TEXT NOT NULL,
+                new_weights_json TEXT NOT NULL,
+                accuracy_before REAL,
+                accuracy_after REAL,
+                resolved_count INTEGER
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_backtest_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                window_size INTEGER NOT NULL,
+                accuracy REAL,
+                avg_losing_streak REAL,
+                max_losing_streak INTEGER,
+                pass_rate REAL,
+                prediction_count INTEGER,
+                win_count INTEGER,
+                loss_count INTEGER,
+                best_signal TEXT,
+                worst_signal TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pattern_rank_cache (
+                pattern_key TEXT PRIMARY KEY,
+                pattern_length INTEGER,
+                occurrences INTEGER DEFAULT 0,
+                next_p INTEGER DEFAULT 0,
+                next_b INTEGER DEFAULT 0,
+                p_rate REAL DEFAULT 0,
+                b_rate REAL DEFAULT 0,
+                confidence REAL DEFAULT 0,
+                last_seen TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_learning_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                overall_accuracy REAL,
+                best_signal TEXT,
+                worst_signal TEXT,
+                avg_confidence REAL
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_weight_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                optimization_time TEXT NOT NULL,
+                old_weights_json TEXT NOT NULL,
+                new_weights_json TEXT NOT NULL,
+                accuracy_before REAL,
+                accuracy_after REAL,
+                resolved_count INTEGER DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pattern_ranking (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern TEXT,
+                pattern_key TEXT,
+                occurrences INTEGER DEFAULT 0,
+                next_p INTEGER DEFAULT 0,
+                next_b INTEGER DEFAULT 0,
+                confidence REAL DEFAULT 0,
+                last_seen TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS v6_statistics (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS anti_streak_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                risk_level TEXT,
+                current_losing_streak INTEGER DEFAULT 0,
+                action TEXT,
+                reason TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS prediction_quality (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                prediction TEXT,
+                quality_grade TEXT,
+                confidence REAL DEFAULT 0,
+                risk_level TEXT,
+                pass_flag INTEGER DEFAULT 0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS confidence_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                confidence REAL DEFAULT 0,
+                calibrated_confidence REAL DEFAULT 0,
+                reason TEXT
+            )
+        """)
+
+        if cur is None:
+            self.conn.commit()
 
     def get_db_status(self):
         try:
@@ -118,55 +296,6 @@ class Database:
             )
             """)
             self.ensure_adaptive_learning_tables(cur)
-            self.ensure_v6_tables(cur)
-
-    def ensure_v6_tables(self, cur=None):
-        def _create(cursor):
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ai_v6_metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                hand_index INTEGER,
-                created_at TEXT NOT NULL,
-                risk_score REAL,
-                risk_level TEXT,
-                road_agreement REAL,
-                pattern_similarity REAL,
-                meta_score REAL,
-                pass_flag INTEGER DEFAULT 0,
-                losing_streak INTEGER DEFAULT 0,
-                prediction_quality TEXT
-            )
-            """)
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ai_backtest_v6 (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT NOT NULL,
-                window_size INTEGER NOT NULL,
-                accuracy REAL,
-                avg_losing_streak REAL,
-                max_losing_streak INTEGER,
-                pass_rate REAL,
-                win_count INTEGER,
-                loss_count INTEGER
-            )
-            """)
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ai_optimizer_v6 (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                optimization_time TEXT NOT NULL,
-                old_weights_json TEXT NOT NULL,
-                new_weights_json TEXT NOT NULL,
-                accuracy_before REAL,
-                accuracy_after REAL,
-                resolved_count INTEGER
-            )
-            """)
-
-        if cur is not None:
-            _create(cur)
-        else:
-            with self._connection() as conn:
-                _create(conn.cursor())
 
     def insert_v6_metrics(self, hand_index, metrics: dict):
         self.ensure_v6_tables()

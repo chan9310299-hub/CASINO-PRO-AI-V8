@@ -53,12 +53,45 @@ except Exception:
         return {"ok": False, "error": "export module unavailable"}
 
 try:
-    from mobile_ui import MOBILE_CSS, render_perf_v7_html
+    from mobile_ui import (
+        MOBILE_CSS,
+        mobile_pro_open,
+        mobile_pro_close,
+        render_cloud_warning_html,
+        render_home_hint_html,
+        render_perf_v7_html,
+        sticky_input_close,
+        sticky_input_open,
+    )
 except Exception:
     MOBILE_CSS = ""
 
+    def render_cloud_warning_html():
+        return ""
+
+    def render_home_hint_html():
+        return ""
+
     def render_perf_v7_html(metrics):
         return ""
+
+    def mobile_pro_open():
+        return ""
+
+    def mobile_pro_close():
+        return ""
+
+    def sticky_input_open():
+        return ""
+
+    def sticky_input_close():
+        return ""
+
+try:
+    from access_guard import render_access_gate
+except Exception:
+    def render_access_gate():
+        return True
 
 try:
     from ai.backtest_report import run_backtest_report
@@ -248,6 +281,18 @@ div[data-testid="column"] .stButton > button:hover {
 .health-gray { border-color: #64748b !important; }
 .prot-ok { color: #3dffa0; font-weight: 700; }
 .prot-block { color: #f87171; font-weight: 700; }
+.cloud-warn {
+    font-size: 0.78rem; padding: 0.55rem 0.7rem; margin-bottom: 0.55rem;
+    border-radius: 10px; background: rgba(120, 53, 15, 0.4);
+    border: 1px solid rgba(251, 191, 36, 0.4); color: #fcd34d;
+}
+.home-hint { font-size: 0.72rem; color: #94a3b8; margin-top: 0.35rem; }
+.stDownloadButton > button {
+    border-radius: 10px; font-weight: 700; font-size: 0.8rem;
+    border: 1px solid rgba(62, 140, 255, 0.35);
+    background: linear-gradient(180deg, #152238, #0f1828); color: #dbeafe;
+    width: 100%;
+}
 """ + MOBILE_CSS + """
 </style>
 """, unsafe_allow_html=True)
@@ -323,6 +368,16 @@ def render_ai_analysis(pred, conf, status, reason, ai_result=None):
         "memory_ai": "Memory AI",
         "risk_ai": "Risk AI",
         "meta_ai": "Meta AI",
+        "streak_ai": "Streak AI",
+        "chop_ai": "Chop AI",
+        "dragon_ai": "Dragon AI",
+        "reversal_ai": "Reversal AI",
+        "two_side_balance_ai": "Balance AI",
+        "road_consensus_ai": "Road Consensus",
+        "memory_similarity_ai": "Memory Similarity",
+        "risk_filter_ai": "Risk Filter",
+        "meta_vote_ai": "Meta Vote",
+        "anti_six_loss_ai": "Anti-Six Loss",
     }
     voter_rows = ""
     for v in voters:
@@ -532,21 +587,47 @@ def render_data_management(db):
         st.session_state.confirm_restore = False
     if "confirm_import" not in st.session_state:
         st.session_state.confirm_import = False
+    if "last_export_db" not in st.session_state:
+        st.session_state.last_export_db = None
+    if "last_backup_db" not in st.session_state:
+        st.session_state.last_backup_db = None
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("DB 백업", key="btn_db_backup", use_container_width=True):
-            path = backup_database("manual")
-            if path:
-                st.success(f"백업 완료: {path.name}")
-            else:
-                st.warning("백업할 DB 없음")
+        if st.button("Create backup now", key="btn_db_backup", use_container_width=True):
+            try:
+                path = backup_database("manual")
+                if path and Path(path).exists():
+                    st.session_state.last_backup_db = str(path)
+                    st.success(f"백업 완료: {Path(path).name}")
+                else:
+                    st.warning("백업할 DB 없음")
+            except Exception:
+                st.warning("백업 실패")
     with c2:
         if st.button("최근 백업 복원", key="btn_restore_prompt", use_container_width=True):
             st.session_state.confirm_restore = True
 
+    if st.session_state.last_backup_db:
+        bp = Path(st.session_state.last_backup_db)
+        if bp.exists():
+            try:
+                st.download_button(
+                    "Download latest DB backup",
+                    data=bp.read_bytes(),
+                    file_name=bp.name,
+                    mime="application/octet-stream",
+                    key="dl_last_backup",
+                    use_container_width=True,
+                )
+            except Exception:
+                pass
+
     if st.session_state.confirm_restore:
-        backups = list_backups(5)
+        try:
+            backups = list_backups(5)
+        except Exception:
+            backups = []
         if not backups:
             st.info("복원할 백업 없음")
             st.session_state.confirm_restore = False
@@ -569,16 +650,42 @@ def render_data_management(db):
     ec1, ec2, ec3 = st.columns(3)
     with ec1:
         if st.button("Export DB", key="btn_export_db", use_container_width=True):
-            p = export_db_copy()
-            st.success(f"Exported: {p.name}")
+            try:
+                p = export_db_copy()
+                st.session_state.last_export_db = str(p)
+                st.success(f"Exported: {p.name}")
+            except Exception:
+                st.warning("Export 실패")
     with ec2:
         if st.button("Export CSV history", key="btn_export_hist", use_container_width=True):
-            p = export_history_csv(db)
-            st.success(f"Exported: {p.name}")
+            try:
+                p = export_history_csv(db)
+                st.session_state.last_export_csv = str(p)
+                st.success(f"Exported: {p.name}")
+            except Exception:
+                st.warning("Export 실패")
     with ec3:
         if st.button("Export CSV predictions", key="btn_export_pred", use_container_width=True):
-            p = export_predictions_csv(db)
-            st.success(f"Exported: {p.name}")
+            try:
+                p = export_predictions_csv(db)
+                st.success(f"Exported: {p.name}")
+            except Exception:
+                st.warning("Export 실패")
+
+    if st.session_state.last_export_db:
+        ep = Path(st.session_state.last_export_db)
+        if ep.exists():
+            try:
+                st.download_button(
+                    "📥 Export DB 다운로드",
+                    data=ep.read_bytes(),
+                    file_name=ep.name,
+                    mime="application/octet-stream",
+                    key="dl_last_export",
+                    use_container_width=True,
+                )
+            except Exception:
+                pass
 
     uploaded = st.file_uploader("Import DB (.db)", type=["db"], key="import_db_file")
     if uploaded is not None:
@@ -654,6 +761,7 @@ def render_footer():
     _md(
         '<div class="dash-footer">'
         '본 프로그램은 분석 및 기록용 도구이며, 어떤 형태의 베팅 조언이나 수익 보장을 하지 않습니다.'
+        f'{render_home_hint_html()}'
         '</div>'
     )
 
@@ -845,6 +953,9 @@ def run_ai_analysis(history, db=None, protection_mode_enabled=True):
 
 inject_dashboard_css()
 
+if not render_access_gate():
+    st.stop()
+
 if "protection_mode_enabled" not in st.session_state:
     st.session_state.protection_mode_enabled = True
 if "backtest_results" not in st.session_state:
@@ -865,13 +976,9 @@ _md(
     f'<div class="dash-title">🔥 {html.escape(APP_NAME)}</div>'
     f'<div class="dash-subtitle">{html.escape(VERSION)} · Baccarat Road Dashboard</div>'
 )
+_md(render_cloud_warning_html())
 
-st.session_state.protection_mode_enabled = st.toggle(
-    "6단계 보호 모드",
-    value=st.session_state.protection_mode_enabled,
-    help="연패 시 예측 빈도를 줄이고 PASS를 늘립니다. 손실 방지를 보장하지 않습니다.",
-)
-
+_md(sticky_input_open())
 c1, c2, c3, c4, c5 = st.columns(5)
 
 with c1:
@@ -902,7 +1009,13 @@ with c5:
         db.reset_current()
         st.rerun()
 
-history = db.get_results()
+_md(sticky_input_close())
+
+history = []
+try:
+    history = db.get_results() or []
+except Exception:
+    history = []
 
 road_engine = BigRoadEngine()
 road_engine.load(history)
@@ -913,7 +1026,10 @@ smallroad_engine = SmallRoad(history=history)
 cockroach_engine = CockroachRoad(history=history)
 
 ai_result = run_ai_analysis(history, db, st.session_state.protection_mode_enabled)
-ensure_prediction_logged(db, history, ai_result)
+try:
+    ensure_prediction_logged(db, history, ai_result)
+except Exception:
+    pass
 
 pred = ai_result.get("prediction")
 conf = ai_result.get("confidence", 0.0)
@@ -921,55 +1037,79 @@ reason = ai_result.get("reason_in_korean") or ai_result.get("reason", [])
 status = ai_result.get("status", "")
 grade = ai_result.get("quality_grade", "—")
 prot = ai_result.get("protection_mode") or {}
-perf_metrics = build_performance_dashboard(db, history, ai_result)
+try:
+    perf_metrics = build_performance_dashboard(db, history, ai_result)
+except Exception:
+    perf_metrics = {"health_color": "gray", "total_input_hands": len(history)}
 
-stats = calculate_stats(history)
-learning = calculate_learning_stats(db, ai_result)
+try:
+    stats = calculate_stats(history)
+except Exception:
+    stats = {
+        "current_win": 0, "current_lose": 0, "max_win": 0, "max_lose": 0,
+        "correct": 0, "wrong": 0, "accuracy": 0.0,
+    }
+try:
+    learning = calculate_learning_stats(db, ai_result)
+except Exception:
+    learning = {
+        "total_predictions": 0, "correct": 0, "wrong": 0,
+        "overall_accuracy": 0, "recent_30_accuracy": 0, "recent_100_accuracy": 0,
+        "pending": 0, "signal_count": 0, "pattern_memory_count": 0,
+    }
 
-left, right = st.columns([7, 3])
+_md(mobile_pro_open())
 
-with left:
-    render_history_chips(history)
+render_history_chips(history)
 
-    grid_col, big_col = st.columns(2)
-    with grid_col:
-        render_six_grid(history)
-    with big_col:
-        render_bigroad(bigroad)
-
-    render_derived_row(
-        bigeye_engine.build_grid(),
-        smallroad_engine.build_grid(),
-        cockroach_engine.build_grid(),
+if grade and grade != "—":
+    _md(
+        f'<div style="text-align:center;font-size:0.72rem;color:#8eb4ff;margin-bottom:0.35rem;">'
+        f'품질 등급: <strong>{html.escape(str(grade))}</strong></div>'
     )
+render_ai_analysis(pred, conf, status, reason, ai_result)
 
-    _md(render_perf_v7_html(perf_metrics))
-    render_performance_card(stats)
+render_bigroad(bigroad)
 
-with right:
-    if grade and grade != "—":
-        _md(
-            f'<div style="text-align:center;font-size:0.72rem;color:#8eb4ff;margin-bottom:0.35rem;">'
-            f'품질 등급: <strong>{html.escape(str(grade))}</strong></div>'
-        )
-    render_ai_analysis(pred, conf, status, reason, ai_result)
+render_derived_row(
+    bigeye_engine.build_grid(),
+    smallroad_engine.build_grid(),
+    cockroach_engine.build_grid(),
+)
+
+html_block = render_perf_v7_html(perf_metrics)
+if html_block:
+    _md(html_block)
+render_performance_card(stats)
+
+render_learning_card(learning)
+
+with st.expander("💾 Backup / Export / Import", expanded=False):
+    render_data_management(db)
+
+with st.expander("⚙️ 고급 설정", expanded=False):
+    st.session_state.protection_mode_enabled = st.toggle(
+        "6단계 보호 모드",
+        value=st.session_state.protection_mode_enabled,
+        help="연패 시 예측 빈도를 줄이고 PASS를 늘립니다. 손실 방지를 보장하지 않습니다.",
+    )
     render_protection_mode_card(prot, st.session_state.protection_mode_enabled)
     render_db_status_card(db_status)
-    v6 = ai_result.get("v6_dashboard") or {}
-    with st.expander("📊 V6 Anti-Streak Dashboard", expanded=False):
-        _md(render_v6_dashboard(v6))
     render_data_count_card(ai_result.get("data_counts"))
+    with st.expander("📊 V6 Anti-Streak Dashboard", expanded=False):
+        _md(render_v6_dashboard(ai_result.get("v6_dashboard") or {}))
+    with st.expander("🎲 6매 GRID", expanded=False):
+        render_six_grid(history)
     with st.expander("🏆 패턴 랭킹", expanded=False):
         render_pattern_ranking(db)
     if st.button("AI 백테스트 실행", key="btn_run_backtest", use_container_width=True):
         st.session_state.backtest_results = run_backtest_report(db)
     if st.session_state.backtest_results:
-        with st.expander("📈 백테스트 리포트", expanded=True):
+        with st.expander("📈 백테스트 리포트", expanded=False):
             render_backtest_results(st.session_state.backtest_results)
-    render_learning_card(learning)
     render_learning_reset(db)
-    with st.expander("💾 백업 / Export / Import", expanded=False):
-        render_data_management(db)
     render_save_card()
+
+_md(mobile_pro_close())
 
 render_footer()
