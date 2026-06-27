@@ -7,9 +7,11 @@ LOW_CONFIDENCE_STATUS = "저신뢰 예측"
 
 
 def confidence_label(confidence: float) -> str:
-    if confidence >= 0.75:
+    if confidence >= 0.85:
+        return "Very High"
+    if confidence >= 0.70:
         return "High"
-    if confidence >= 0.55:
+    if confidence >= 0.50:
         return "Medium"
     return "Low"
 
@@ -19,7 +21,13 @@ def compute_expected_hit_rate(
     prob_p: float,
     prob_b: float,
     prediction: str,
+    **kwargs,
 ) -> float:
+    if kwargs:
+        from ai.v11_confidence import compute_smart_expected_hit_rate
+        return compute_smart_expected_hit_rate(
+            confidence, prob_p, prob_b, prediction, **kwargs
+        )
     side_prob = prob_p if prediction == "P" else prob_b
     rate = max(confidence, side_prob)
     return round(min(0.99, rate) * 100, 1)

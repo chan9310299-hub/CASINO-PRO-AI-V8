@@ -477,26 +477,13 @@ def render_v6_dashboard(v6):
 
 
 def render_learning_card(learning):
-    best = learning.get("best_signal", "—")
-    worst = learning.get("worst_signal", "—")
-    if best != "—" and learning.get("best_accuracy"):
-        best = f"{best} ({learning['best_accuracy']:.0%})"
-    if worst != "—" and learning.get("worst_accuracy") is not None:
-        worst = f"{worst} ({learning['worst_accuracy']:.0%})"
-
     rows = [
-        ("총 AI 예측", learning["total_predictions"]),
-        ("AI 적중", learning["correct"]),
-        ("AI 오답", learning["wrong"]),
-        ("AI 적중률", f"{learning['overall_accuracy']}%"),
+        ("누적 예측", learning["total_predictions"]),
+        ("누적 적중", learning["correct"]),
+        ("누적 오답", learning["wrong"]),
+        ("전체 적중률", f"{learning['overall_accuracy']}%"),
         ("최근 30 적중률", f"{learning['recent_30_accuracy']}%"),
-        ("최근 100 적중률", f"{learning['recent_100_accuracy']}%"),
-        ("미확정 예측", learning["pending"]),
-        ("학습 신호 수", learning.get("signal_count", 0)),
-        ("최고 성능 신호", best),
-        ("최저 성능 신호", worst),
         ("패턴 메모리 수", learning.get("pattern_memory_count", 0)),
-        ("유사패턴 근거", learning.get("pattern_reason", "—")),
     ]
     table = "".join(f"<tr><td>{html.escape(str(a))}</td><td>{b}</td></tr>" for a, b in rows)
     _md(
@@ -776,7 +763,7 @@ def render_save_card():
 def render_footer():
     _md(
         '<div class="dash-footer">'
-        '본 프로그램은 분석 및 기록용 도구이며, 어떤 형태의 베팅 조언이나 수익 보장을 하지 않습니다.'
+        '본 프로그램은 분석 및 기록용 도구이며, 어떤 형태의 수익이나 결과를 보장하지 않습니다.'
         f'{render_home_hint_html()}'
         '</div>'
     )
@@ -985,11 +972,11 @@ _md(render_v10_header(grade, db_status))
 
 render_history_chips(history)
 
+render_input_buttons(db)
+
 _md(sticky_prediction_open())
 _md(render_v10_prediction_card(pred, conf, ai_result))
 _md(sticky_prediction_close())
-
-render_input_buttons(db)
 
 render_bigroad(bigroad)
 render_six_grid(history)

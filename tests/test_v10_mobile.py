@@ -26,8 +26,8 @@ class V10LayoutTests(unittest.TestCase):
             HOME_LAYOUT_ORDER,
             (
                 "recent_history",
-                "ai_prediction",
                 "input_buttons",
+                "ai_prediction",
                 "big_road",
                 "six_grid",
                 "performance_summary",
@@ -93,7 +93,7 @@ class V10PredictionCardTests(unittest.TestCase):
         )
         self.assertEqual(len(reasons), 5)
         labels = {r["label"] for r in reasons}
-        self.assertIn("최근 추세", labels)
+        self.assertIn("최근 흐름", labels)
 
 
 class V10NoPassTests(unittest.TestCase):

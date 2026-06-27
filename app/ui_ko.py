@@ -3,7 +3,7 @@
 from typing import Any, Dict, Optional
 
 APP_DISPLAY_NAME = "CASINO PRO AI"
-VERSION_DISPLAY = "v10"
+VERSION_DISPLAY = "v11"
 SUBTITLE = "바카라 로드 분석"
 
 SIX_GRID_TITLE = "6매 GRID"
@@ -11,8 +11,8 @@ BIG_ROAD_TITLE = "빅 로드"
 
 HOME_LAYOUT_ORDER = (
     "recent_history",
-    "ai_prediction",
     "input_buttons",
+    "ai_prediction",
     "big_road",
     "six_grid",
     "performance_summary",
@@ -98,6 +98,7 @@ RISK_LEVEL_KO = {
 }
 
 CONFIDENCE_LABEL_KO = {
+    "Very High": "매우 높음",
     "High": "높음",
     "Medium": "보통",
     "Low": "낮음",
@@ -131,9 +132,11 @@ def risk_level_ko(level: Optional[str]) -> str:
 def confidence_label_ko(confidence: float, english_label: Optional[str] = None) -> str:
     if english_label and english_label in CONFIDENCE_LABEL_KO:
         return CONFIDENCE_LABEL_KO[english_label]
-    if confidence >= 0.75:
+    if confidence >= 0.85:
+        return "매우 높음"
+    if confidence >= 0.70:
         return "높음"
-    if confidence >= 0.55:
+    if confidence >= 0.50:
         return "보통"
     return "낮음"
 
@@ -147,7 +150,7 @@ def protection_status_ko(
         return "보호 꺼짐"
     risk = str(prot.get("risk_level") or prot.get("streak_risk") or "LOW").upper()
     if risk in ("EXTREME", "HIGH"):
-        return "위험 구간"
+        return "위험 구간 — 신뢰도 낮음"
     if low_confidence or risk == "MEDIUM":
         return "저신뢰 구간"
     return "예측 허용"

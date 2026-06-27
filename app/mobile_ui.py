@@ -1,4 +1,4 @@
-"""Mobile UI — CASINO PRO AI v10 Mobile Ultimate."""
+"""Mobile UI — CASINO PRO AI v11 Smart AI Upgrade."""
 
 import html
 from typing import Any, Dict, List, Tuple
@@ -17,7 +17,7 @@ MOBILE_CSS = """
     overflow-x: hidden !important; max-width: 100vw !important;
 }
 .mobile-pro-stack {
-    display: flex; flex-direction: column; gap: 0.35rem; width: 100%;
+    display: flex; flex-direction: column; gap: 0.25rem; width: 100%;
     overflow-x: hidden;
 }
 header[data-testid="stHeader"], footer, #MainMenu, .stDeployButton,
@@ -32,15 +32,15 @@ a[href*="github.com/streamlit"] { display: none !important; }
 }
 .v10-brand { font-size: 1.15rem; font-weight: 800; color: #5ecbff; margin-bottom: 0.25rem; }
 .v10-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; font-size: 0.78rem; color: #94a3b8; }
-.sticky-prediction-wrap {
-    position: sticky; top: 0; z-index: 998;
-    background: rgba(7, 11, 20, 0.97); backdrop-filter: blur(10px);
-    padding-bottom: 0.25rem; margin-bottom: 0.2rem;
-}
 .sticky-input-wrap {
-    position: sticky; top: 0; z-index: 997;
-    background: rgba(7, 11, 20, 0.96); backdrop-filter: blur(8px);
-    padding: 0.2rem 0 0.3rem; margin-bottom: 0.3rem;
+    position: sticky; top: 0; z-index: 999;
+    background: rgba(7, 11, 20, 0.98); backdrop-filter: blur(8px);
+    padding: 0.15rem 0 0.25rem; margin-bottom: 0.15rem;
+}
+.sticky-prediction-wrap {
+    position: sticky; top: 132px; z-index: 998;
+    background: rgba(7, 11, 20, 0.97); backdrop-filter: blur(10px);
+    padding-bottom: 0.15rem; margin-bottom: 0.15rem;
 }
 .v10-pred-card { padding: 0.75rem 0.8rem !important; }
 .pred-animate { animation: fadeIn 0.35s ease-out; }
@@ -76,6 +76,12 @@ a[href*="github.com/streamlit"] { display: none !important; }
     align-items: center; font-size: 0.82rem; color: #cbd5e1; margin-bottom: 0.35rem;
 }
 .reason-score { font-weight: 800; color: #3dffa0; }
+.v11-reasons-title { font-size: 0.72rem; color: #64748b; margin: 0.45rem 0 0.25rem; }
+.v11-reason-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: #cbd5e1; margin-top: 0.2rem; }
+.v11-reason-label { flex: 1; }
+.v11-reason-score { font-weight: 800; color: #3dffa0; margin-left: 0.5rem; }
+.similar-pattern-line { font-size: 0.76rem; color: #94a3b8; margin: 0.35rem 0 0.15rem; line-height: 1.35; }
+.risk-zone-banner { background: rgba(234, 88, 12, 0.15); border: 1px solid rgba(234, 88, 12, 0.45); color: #fdba74; font-size: 0.78rem; text-align: center; padding: 0.35rem; border-radius: 8px; margin-bottom: 0.35rem; }
 .v10-perf-row { grid-template-columns: repeat(3, 1fr) !important; }
 @media (max-width: 768px) {
     .block-container { padding: 0.25rem 0.35rem 0.35rem !important; }

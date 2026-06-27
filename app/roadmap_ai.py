@@ -26,6 +26,11 @@ from ai.final_prediction import (
     confidence_label,
     tie_break_prediction,
 )
+from ai.v11_confidence import (
+    PROTECTION_WARNING,
+    apply_protection_confidence_penalty,
+)
+from ai.similar_pattern_summary import build_similar_pattern_summary
 from ai.pass_system import evaluate_pass
 from ai.pattern_similarity import analyze_pattern_similarity
 from ai.prediction_engine import PredictionEngine
@@ -311,6 +316,15 @@ class RoadmapAI:
             prediction = tie_break_prediction(history, base, pattern_sim)
 
         confidence = apply_low_confidence(confidence, low_confidence)
+        confidence = apply_protection_confidence_penalty(
+            confidence, prot_meta, protection_mode_enabled,
+        )
+        if (
+            protection_mode_enabled
+            and prot_meta.get("risk_level") in ("HIGH", "EXTREME")
+        ):
+            if PROTECTION_WARNING not in merged_reason:
+                merged_reason.insert(0, PROTECTION_WARNING)
         status = LOW_CONFIDENCE_STATUS if low_confidence else base.get("status", "")
         quality = _prediction_quality(confidence, risk["risk_level"], low_confidence)
         quality_grade = grade_prediction(confidence, risk["risk_level"], road_agreement, low_confidence)
@@ -325,8 +339,19 @@ class RoadmapAI:
             meta.get("probability_b", 0.5),
         )
         expected_hit = compute_expected_hit_rate(
-            confidence, probs["P"], probs["B"], prediction,
+            confidence,
+            probs["P"],
+            probs["B"],
+            prediction,
+            recent_accuracy_pct=acc_pct,
+            signal_agreement=1.0 - conflict,
+            pattern_memory_strength=sim_pct,
+            road_consensus=road_agreement,
+            risk_level=risk["risk_level"],
+            sample_size=sample_size,
+            low_confidence=low_confidence,
         )
+        similar_pattern_summary = build_similar_pattern_summary(pattern_sim, prediction)
 
         assert_final_prediction(prediction)
 
@@ -412,6 +437,14 @@ class RoadmapAI:
             "low_confidence": low_confidence,
             "expected_hit_rate": expected_hit,
             "confidence_label": confidence_label(confidence),
+            "similar_pattern_summary": similar_pattern_summary,
+            "protection_warning": (
+                PROTECTION_WARNING
+                if protection_mode_enabled
+                and prot_meta.get("risk_level") in ("HIGH", "EXTREME", "MEDIUM")
+                and current_streak >= 2
+                else ""
+            ),
             "meta_score": meta.get("meta_score"),
             "quality_grade": quality_grade,
             "protection_mode": prot_meta,

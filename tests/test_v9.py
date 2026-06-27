@@ -257,8 +257,9 @@ class FinalPredictionHelpersTest(unittest.TestCase):
         self.assertGreaterEqual(hit, 70)
 
     def test_confidence_label(self):
-        self.assertEqual(confidence_label(0.8), "High")
-        self.assertEqual(confidence_label(0.6), "Medium")
+        self.assertEqual(confidence_label(0.88), "Very High")
+        self.assertEqual(confidence_label(0.75), "High")
+        self.assertEqual(confidence_label(0.55), "Medium")
 
     def test_assert_final_rejects_pass(self):
         with self.assertRaises(ValueError):

@@ -38,9 +38,10 @@ class KoreanUILabelTests(unittest.TestCase):
         self.assertEqual(vote_label_ko(None), "중립")
 
     def test_confidence_korean(self):
-        self.assertEqual(confidence_label_ko(0.8), "높음")
-        self.assertEqual(confidence_label_ko(0.6), "보통")
-        self.assertEqual(confidence_label_ko(0.4), "낮음")
+        self.assertEqual(confidence_label_ko(0.88), "매우 높음")
+        self.assertEqual(confidence_label_ko(0.75), "높음")
+        self.assertEqual(confidence_label_ko(0.55), "보통")
+        self.assertEqual(confidence_label_ko(0.40), "낮음")
 
     def test_risk_korean(self):
         self.assertEqual(risk_level_ko("EXTREME"), "매우 높음")
@@ -48,7 +49,7 @@ class KoreanUILabelTests(unittest.TestCase):
 
     def test_protection_status_korean(self):
         self.assertEqual(protection_status_ko({"risk_level": "LOW"}, True), "예측 허용")
-        self.assertEqual(protection_status_ko({"risk_level": "HIGH"}, True), "위험 구간")
+        self.assertEqual(protection_status_ko({"risk_level": "HIGH"}, True), "위험 구간 — 신뢰도 낮음")
 
     def test_voter_labels_all_korean(self):
         english_only = ("Trend AI", "Road AI", "Pattern AI", "Memory AI", "Risk AI")
@@ -59,6 +60,10 @@ class KoreanUILabelTests(unittest.TestCase):
         self.assertIn("플레이어", BTN_PLAYER)
 
     def test_layout_order_includes_six_grid(self):
+        self.assertLess(
+            HOME_LAYOUT_ORDER.index("input_buttons"),
+            HOME_LAYOUT_ORDER.index("ai_prediction"),
+        )
         self.assertLess(
             HOME_LAYOUT_ORDER.index("ai_prediction"),
             HOME_LAYOUT_ORDER.index("big_road"),
@@ -82,9 +87,11 @@ class KoreanUIAppSourceTests(unittest.TestCase):
 
     def test_layout_order_in_source(self):
         main = self.app_source.split("# --- App ---")[1]
+        btn_idx = main.find("render_input_buttons(db)")
         ai_idx = main.find("render_v10_prediction_card")
         big_idx = main.find("render_bigroad(bigroad)")
         six_idx = main.find("render_six_grid(history)")
+        self.assertLess(btn_idx, ai_idx)
         self.assertLess(ai_idx, big_idx)
         self.assertLess(big_idx, six_idx)
 

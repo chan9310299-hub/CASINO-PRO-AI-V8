@@ -59,9 +59,9 @@ class DerivedRoadRemovedTests(unittest.TestCase):
         self.assertIn("BigEyeRoad", self.app_source)
         self.assertIn("bigeye=bigeye", self.app_source)
 
-    def test_version_v92(self):
+    def test_version_v11(self):
         from local_config import VERSION
-        self.assertIn("v10", VERSION)
+        self.assertIn("v11", VERSION)
 
 
 if __name__ == "__main__":
