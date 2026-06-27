@@ -235,10 +235,40 @@ class Database:
         if cur is None:
             self.conn.commit()
 
+    def get_last_save_time(self) -> str:
+        try:
+            with self._connection() as conn:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT MAX(ts) FROM (
+                        SELECT MAX(created_at) AS ts FROM results
+                        UNION ALL
+                        SELECT MAX(created_at) FROM ai_prediction_history
+                        UNION ALL
+                        SELECT MAX(updated_at) FROM ai_pattern_memory
+                    )
+                    """
+                )
+                row = cur.fetchone()
+                return (row[0] if row else None) or "—"
+        except Exception:
+            return "—"
+
     def get_db_status(self):
         try:
             status = get_migration_status(self.conn)
             status["last_backup"] = get_last_backup_time() or "—"
+            status["storage_mode"] = "local"
+            status["cloud_connected"] = False
+            status["last_save_time"] = self.get_last_save_time()
+            try:
+                status["total_input_hands"] = len(self.get_results() or [])
+                stats = self.get_learning_stats()
+                status["total_ai_predictions"] = stats.get("total_predictions", 0)
+                status["pattern_memory_count"] = self.get_pattern_memory_count()
+            except Exception:
+                pass
             return status
         except Exception:
             return {
@@ -249,6 +279,9 @@ class Database:
                 "total_stored_rows": 0,
                 "status": "OK",
                 "last_backup": "—",
+                "storage_mode": "local",
+                "cloud_connected": False,
+                "last_save_time": "—",
             }
 
     @contextmanager
@@ -876,3 +909,12 @@ class Database:
 
     def count_pattern_memory(self):
         return self.get_pattern_memory_count()
+
+
+def create_database():
+    """Return cloud PostgreSQL or local SQLite database."""
+    try:
+        from storage import get_database
+        return get_database()
+    except Exception:
+        return Database()

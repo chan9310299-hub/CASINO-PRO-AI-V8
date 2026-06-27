@@ -585,7 +585,7 @@ def render_backtest_results(results):
     )
 
 
-def render_data_management(db):
+def render_data_management(db, storage_status=None):
     if "confirm_restore" not in st.session_state:
         st.session_state.confirm_restore = False
     if "confirm_import" not in st.session_state:
@@ -594,6 +594,47 @@ def render_data_management(db):
         st.session_state.last_export_db = None
     if "last_backup_db" not in st.session_state:
         st.session_state.last_backup_db = None
+    if "migration_result" not in st.session_state:
+        st.session_state.migration_result = None
+
+    try:
+        from v12_ui import render_v12_db_status_card, cloud_migration_available
+        _md(render_v12_db_status_card(storage_status or {}))
+    except Exception:
+        pass
+
+    if cloud_migration_available():
+        if st.button(
+            "SQLite → 클라우드 DB 이전",
+            key="btn_sqlite_to_cloud",
+            use_container_width=True,
+            help="로컬 SQLite 데이터를 클라우드 DB로 한 번 이전합니다. 이전 전 자동 백업됩니다.",
+        ):
+            try:
+                from cloud_migration import migrate_sqlite_to_postgres
+                from storage import get_storage_backend
+
+                sqlite_db = Database()
+                pg_backend = get_storage_backend(force_cloud=True)
+                result = migrate_sqlite_to_postgres(sqlite_db, pg_backend.db)
+                st.session_state.migration_result = result
+                st.rerun()
+            except Exception as exc:
+                st.warning(f"이전 실패: {exc}")
+
+    mig = st.session_state.migration_result
+    if mig:
+        if mig.get("skipped"):
+            st.info(mig.get("message", "이미 이전됨"))
+        elif mig.get("ok"):
+            st.success(
+                f"{mig.get('message', '이전 완료')} · "
+                f"입력 {mig.get('results_imported', 0)} · "
+                f"예측 {mig.get('predictions_imported', 0)} · "
+                f"패턴 {mig.get('patterns_imported', 0)}"
+            )
+        else:
+            st.warning(mig.get("message", "이전 실패"))
 
     c1, c2 = st.columns(2)
     with c1:
@@ -920,13 +961,37 @@ try:
 except Exception:
     pass
 
-db = Database()
+try:
+    from storage import get_storage_backend
+    from v12_ui import render_cloud_storage_banner
+
+    _storage = get_storage_backend()
+    db = _storage.db
+    storage_status = _storage.get_status()
+except Exception:
+    from database import Database
+
+    db = Database()
+    storage_status = {"cloud_connected": False, "storage_mode": "local"}
+
 try:
     db_status = db.get_db_status()
 except Exception:
     db_status = {}
+db_status.update({
+    k: storage_status.get(k, v)
+    for k, v in storage_status.items()
+    if k not in db_status or db_status.get(k) in (None, "—", 0)
+})
+try:
+    from cloud_migration import get_migration_status
 
-_md(render_cloud_warning_html())
+    if storage_status.get("cloud_connected"):
+        db_status["migration_status"] = get_migration_status(db)
+except Exception:
+    pass
+
+_md(render_cloud_storage_banner(storage_status.get("cloud_connected", False)))
 
 history = []
 try:
@@ -1015,7 +1080,7 @@ with st.expander(EXP_LEARNING, expanded=False):
     render_learning_card(learning)
 
 with st.expander(EXP_BACKUP, expanded=False):
-    render_data_management(db)
+    render_data_management(db, storage_status)
 
 with st.expander(EXP_ADVANCED, expanded=False):
     render_db_status_card(db_status)

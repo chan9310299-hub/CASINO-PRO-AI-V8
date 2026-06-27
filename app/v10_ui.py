@@ -24,7 +24,7 @@ def render_v10_header(quality_grade: str, db_status: Dict[str, Any]) -> str:
         f'<div class="v10-header">'
         f'<div class="v10-brand">CASINO PRO AI</div>'
         f'<div class="v10-meta">'
-        f'<span>버전 v11</span>'
+        f'<span>버전 v12</span>'
         f'<span>AI 품질: <strong>{html.escape(str(q))}</strong></span>'
         f'<span>DB: <strong>{html.escape(str(db_ok))}</strong></span>'
         f'</div></div>'
