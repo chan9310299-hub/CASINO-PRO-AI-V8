@@ -1,4 +1,4 @@
-"""Mobile-friendly layout helpers — CASINO PRO AI v9 Mobile Pro."""
+"""Mobile-friendly layout helpers — CASINO PRO AI v9.1 모바일 프로."""
 
 import html
 from typing import Any, Dict, List, Tuple
@@ -11,26 +11,50 @@ HOME_SCREEN_HINT = (
 )
 
 MOBILE_CSS = """
-.mobile-pro-stack { display: flex; flex-direction: column; gap: 0.45rem; width: 100%; }
+.stApp, .main, [data-testid="stAppViewContainer"], .block-container {
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+}
+.mobile-pro-stack {
+    display: flex; flex-direction: column; gap: 0.4rem; width: 100%;
+    overflow-x: hidden;
+}
+header[data-testid="stHeader"],
+footer,
+#MainMenu,
+.stDeployButton,
+[data-testid="stToolbar"],
+[data-testid="stToolbarActions"],
+a[data-testid="stBaseLinkButton-header"],
+button[kind="header"],
+.stAppDeployButton,
+iframe[title="GitHub"] {
+    visibility: hidden !important;
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+}
+a[href*="github.com/streamlit"] { display: none !important; }
+.card-title { text-transform: none !important; letter-spacing: 0 !important; font-size: 0.88rem !important; }
 @media (max-width: 768px) {
-    .block-container { padding: 0.3rem 0.4rem 0.45rem !important; max-width: 100% !important; }
-    .dash-title { font-size: 1.15rem; margin-bottom: 0.15rem; }
-    .dash-subtitle { font-size: 0.7rem; margin-bottom: 0.35rem; }
+    .block-container { padding: 0.28rem 0.35rem 0.4rem !important; max-width: 100% !important; }
+    .dash-title { font-size: 1.2rem; margin-bottom: 0.12rem; line-height: 1.35; }
+    .dash-subtitle { font-size: 0.78rem; margin-bottom: 0.3rem; }
     .cloud-warn {
-        font-size: 0.74rem; padding: 0.5rem 0.6rem; margin-bottom: 0.4rem;
+        font-size: 0.8rem; padding: 0.5rem 0.6rem; margin-bottom: 0.35rem;
         border-radius: 10px; background: rgba(120, 53, 15, 0.45);
         border: 1px solid rgba(251, 191, 36, 0.45); color: #fcd34d;
     }
     .sticky-input-wrap {
         position: sticky; top: 0; z-index: 999;
-        background: rgba(7, 11, 20, 0.96);
+        background: rgba(7, 11, 20, 0.97);
         backdrop-filter: blur(8px);
-        padding: 0.25rem 0 0.35rem; margin-bottom: 0.35rem;
+        padding: 0.2rem 0 0.3rem; margin-bottom: 0.3rem;
         border-bottom: 1px solid rgba(62, 140, 255, 0.2);
     }
-    div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: 0.3rem !important; }
+    div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: 0.28rem !important; width: 100% !important; }
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-        flex: 1 1 100% !important; width: 100% !important; min-width: 100% !important;
+        flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important;
     }
     .sticky-input-wrap div[data-testid="column"] {
         flex: 1 1 31% !important; width: 31% !important; min-width: 31% !important;
@@ -42,25 +66,30 @@ MOBILE_CSS = """
     .perf-row { grid-template-columns: repeat(2, 1fr) !important; gap: 6px; }
     .perf-v7-row { grid-template-columns: repeat(2, 1fr) !important; }
     .derived-row { grid-template-columns: 1fr !important; }
-    .dash-card { padding: 0.55rem 0.6rem; margin-bottom: 0.4rem; }
+    .dash-card {
+        padding: 0.6rem 0.65rem; margin-bottom: 0.35rem; width: 100%;
+        box-sizing: border-box;
+    }
     .road-scroll, .six-scroll, .mini-scroll {
         -webkit-overflow-scrolling: touch; scroll-behavior: smooth;
+        max-width: 100%; overflow-x: auto; overflow-y: hidden;
     }
     div[data-testid="column"] .stButton > button,
     .stDownloadButton > button {
-        min-height: 54px !important; font-size: 0.9rem !important;
-        padding: 0.65rem 0.35rem !important;
+        min-height: 56px !important; font-size: 0.95rem !important;
+        padding: 0.7rem 0.35rem !important;
     }
-    .learn-table { font-size: 0.76rem; }
-    .conf-big { font-size: 1.45rem; }
-    .home-hint { font-size: 0.7rem; color: #94a3b8; margin-top: 0.3rem; }
+    .learn-table { font-size: 0.8rem; }
+    .prob-panel { font-size: 0.82rem !important; }
+    .pred-card { font-size: 1.35rem !important; }
+    .home-hint { font-size: 0.74rem; color: #94a3b8; margin-top: 0.3rem; }
 }
 @media (max-width: 480px) {
     .sticky-input-wrap div[data-testid="column"] {
         flex: 1 1 100% !important; width: 100% !important; min-width: 100% !important;
     }
     .perf-row, .perf-v7-row { grid-template-columns: 1fr 1fr !important; }
-    .chip { width: 26px; height: 26px; font-size: 0.68rem; }
+    .chip { width: 26px; height: 26px; font-size: 0.7rem; }
 }
 """
 
@@ -113,7 +142,7 @@ def render_perf_v7_html(metrics: Dict[str, Any]) -> str:
         ("최근 100 적중률", f"{metrics.get('recent_100_accuracy', 0)}%", True),
         ("현재 연패", metrics.get("current_losing_streak", 0), False),
         ("최대 연패", metrics.get("max_losing_streak", 0), False),
-        ("PASS 비율", f"{metrics.get('pass_rate', 0)}%", False),
+        ("저신뢰 비율", f"{metrics.get('pass_rate', 0)}%", False),
         ("평균 신뢰도", f"{round((metrics.get('avg_confidence') or 0) * 100, 1)}%", False),
         ("패턴 메모리 수", metrics.get("pattern_memory_count", 0), False),
         ("학습 신호 수", metrics.get("signal_count", 0), False),

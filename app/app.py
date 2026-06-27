@@ -11,6 +11,38 @@ if str(_APP_DIR) not in sys.path:
 
 from ai.final_prediction import LOW_CONFIDENCE_STATUS
 from local_config import APP_NAME, EXPORT_DIR, VERSION
+from ui_ko import (
+    AI_PREDICTION_TITLE,
+    BIG_ROAD_TITLE,
+    BTN_BACKUP_NOW,
+    BTN_BANKER,
+    BTN_DOWNLOAD_BACKUP,
+    BTN_DOWNLOAD_EXPORT,
+    BTN_EXPORT_CSV_HIST,
+    BTN_EXPORT_CSV_PRED,
+    BTN_EXPORT_DB,
+    BTN_IMPORT_DB,
+    BTN_PLAYER,
+    BTN_RESET,
+    BTN_TIE,
+    BTN_UNDO,
+    DERIVED_ROAD_TITLES,
+    EXP_ADVANCED,
+    EXP_BACKUP,
+    EXP_PATTERN,
+    EXP_V6,
+    SIX_GRID_TITLE,
+    SUBTITLE,
+    UPLOAD_LABEL,
+    VOTER_SUMMARY_TITLE,
+    confidence_label_ko,
+    prediction_label_ko,
+    protection_mode_on_ko,
+    protection_status_ko,
+    risk_level_ko,
+    vote_label_ko,
+    voter_label_ko,
+)
 from bigroad import BigRoadEngine
 from roadmap_ai import RoadmapAI
 from bigeye import BigEyeRoad
@@ -141,15 +173,16 @@ st.set_page_config(page_title=APP_NAME, layout="wide", initial_sidebar_state="co
 def inject_dashboard_css():
     st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
 .stApp {
     background: linear-gradient(165deg, #070b14 0%, #0d1526 45%, #0a1020 100%);
     color: #e8eef7;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Noto Sans KR', sans-serif;
 }
-.block-container { padding-top: 1rem; padding-bottom: 0.5rem; max-width: 100%; }
+.block-container { padding-top: 0.65rem; padding-bottom: 0.45rem; max-width: 100%; }
 header[data-testid="stHeader"] { background: transparent; }
 #MainMenu, footer, .stDeployButton { visibility: hidden; }
+.card-title { text-transform: none; letter-spacing: 0; }
 .dash-title {
     font-size: 1.55rem; font-weight: 800; margin: 0 0 0.35rem 0;
     background: linear-gradient(90deg, #5ecbff, #3dffa0);
@@ -354,105 +387,72 @@ def render_ai_analysis(pred, conf, status, reason, ai_result=None):
     prob_b = ai_result.get("probability_b")
     voters = ai_result.get("voters") or []
     low_conf = ai_result.get("low_confidence", False) or (conf or 0) < 0.60
-    conf_label = ai_result.get("confidence_label") or (
-        "High" if (conf or 0) >= 0.75 else "Medium" if (conf or 0) >= 0.55 else "Low"
-    )
+    conf_ko = confidence_label_ko(conf or 0, ai_result.get("confidence_label"))
+    risk_ko = risk_level_ko(ai_result.get("risk_level"))
     expected_hit = ai_result.get("expected_hit_rate")
     if expected_hit is None and pred in ("P", "B"):
         side = prob_p if pred == "P" else prob_b
         expected_hit = round(max(conf or 0, side or 0.5) * 100, 1)
 
     if pred is None:
-        pred_block = (
+        body = (
             f'<div class="pred-card pred-wait">'
             f'{html.escape(status or "6개 입력 후 7번째부터 예측 시작")}</div>'
         )
-        prob_block = ""
-        meta_block = ""
         low_block = ""
     elif pred in ("P", "B"):
-        label = "PLAYER" if pred == "P" else "BANKER"
+        label = prediction_label_ko(pred)
         cls = "pred-player" if pred == "P" else "pred-banker"
         if low_conf:
             cls += " pred-low-conf"
-        pred_block = f'<div class="pred-card {cls}">{label}</div>'
-        meta_block = (
-            f'<div class="pred-meta-row">'
-            f'<div class="pred-meta-item">'
-            f'<div class="pred-meta-label">Expected hit rate</div>'
-            f'<div class="pred-meta-value{" orange" if low_conf else ""}">{expected_hit}%</div>'
-            f'</div>'
-            f'<div class="pred-meta-item">'
-            f'<div class="pred-meta-label">Confidence</div>'
-            f'<div class="pred-meta-value">{html.escape(conf_label)}</div>'
-            f'</div></div>'
-        )
         p_pct = round((prob_p if prob_p is not None else 0.5) * 100, 1)
         b_pct = round((prob_b if prob_b is not None else 0.5) * 100, 1)
-        prob_block = (
-            f'<div class="prob-panel">'
-            f'<div><span class="prob-p">PLAYER</span> : {p_pct}%</div>'
-            f'<div><span class="prob-b">BANKER</span> : {b_pct}%</div>'
-            f'<div style="margin-top:0.25rem;">Expected hit rate:<br>'
-            f'<span class="prob-hit">{expected_hit}%</span></div></div>'
-        )
         low_block = (
             f'<div class="low-conf-banner">⚠️ {html.escape(LOW_CONFIDENCE_STATUS)}</div>'
             if low_conf else ""
         )
+        body = (
+            f'{low_block}'
+            f'<div class="prob-panel">'
+            f'<div style="font-size:0.95rem;font-weight:800;margin-bottom:0.35rem;color:#e2e8f0;">'
+            f'예측: <span class="{"prob-p" if pred == "P" else "prob-b"}">{html.escape(label)}</span></div>'
+            f'<div>예상 적중률: <span class="prob-hit">{expected_hit}%</span></div>'
+            f'<div>플레이어 확률: <span class="prob-p">{p_pct}%</span></div>'
+            f'<div>뱅커 확률: <span class="prob-b">{b_pct}%</span></div>'
+            f'<div>신뢰도: <strong>{html.escape(conf_ko)}</strong></div>'
+            f'<div>위험도: <strong>{html.escape(risk_ko)}</strong></div>'
+            f'</div>'
+            f'<div class="pred-card {cls}">{html.escape(label)}</div>'
+        )
     else:
-        label = "PLAYER" if prob_p is not None and prob_p >= (prob_b or 0) else "BANKER"
-        pred_block = f'<div class="pred-card pred-player">{label}</div>'
-        prob_block = ""
-        meta_block = ""
+        body = f'<div class="pred-card pred-wait">분석 대기</div>'
         low_block = ""
 
     items = "".join(f"<li>{html.escape(str(r))}</li>" for r in reason) or "<li>—</li>"
-    status_text = html.escape(status or "분석 대기")
-    if low_conf and pred in ("P", "B"):
-        status_text = html.escape(LOW_CONFIDENCE_STATUS)
+    status_text = html.escape(LOW_CONFIDENCE_STATUS if low_conf and pred in ("P", "B") else (status or "분석 대기"))
 
-    voter_labels = {
-        "trend_ai": "Trend AI",
-        "road_ai": "Road AI",
-        "pattern_ai": "Pattern AI",
-        "memory_ai": "Memory AI",
-        "risk_ai": "Risk AI",
-        "meta_ai": "Meta AI",
-        "streak_ai": "Streak AI",
-        "chop_ai": "Chop AI",
-        "dragon_ai": "Dragon AI",
-        "reversal_ai": "Reversal AI",
-        "two_side_balance_ai": "Balance AI",
-        "road_consensus_ai": "Road Consensus",
-        "memory_similarity_ai": "Memory Similarity",
-        "risk_filter_ai": "Risk Filter",
-        "meta_vote_ai": "Meta Vote",
-        "anti_six_loss_ai": "Anti-Six Loss",
-    }
     voter_rows = ""
     for v in voters:
-        vlabel = voter_labels.get(v.get("name"), v.get("name", "—"))
-        vote = v.get("vote") or "neutral"
+        vlabel = voter_label_ko(v.get("name", ""))
+        vote = vote_label_ko(v.get("vote"))
         voter_rows += (
             f'<tr><td>{html.escape(vlabel)}</td>'
-            f'<td>{html.escape(str(vote))}</td></tr>'
+            f'<td>{html.escape(vote)}</td></tr>'
         )
     voter_table = (
         f'<table class="learn-table" style="margin-top:0.35rem;">{voter_rows}</table>'
         if voter_rows else ""
     )
-
     voter_section = ""
     if voter_table:
         voter_section = (
-            '<div style="font-size:0.65rem;color:#64748b;margin-top:0.35rem;">'
-            'Voter Summary</div>' + voter_table
+            f'<div style="font-size:0.72rem;color:#64748b;margin-top:0.35rem;">'
+            f'{html.escape(VOTER_SUMMARY_TITLE)}</div>' + voter_table
         )
 
     _md(
-        f'<div class="dash-card"><div class="card-title">🎯 AI Prediction</div>'
-        f'{low_block}{pred_block}{meta_block}{prob_block}'
+        f'<div class="dash-card"><div class="card-title">{AI_PREDICTION_TITLE}</div>'
+        f'{body}'
         f'<div class="status-box">📌 {status_text}</div>'
         f'<div class="reason-box"><ul>{items}</ul></div>'
         f'{voter_section}</div>'
@@ -565,9 +565,11 @@ def render_db_status_card(db_status):
     )
 
 
-def render_protection_mode_card(prot, enabled):
+def render_protection_mode_card(prot, enabled, low_confidence=False):
     prot = prot or {}
     risk_level = prot.get("risk_level") or prot.get("streak_risk", "LOW")
+    risk_ko = risk_level_ko(str(risk_level))
+    status_txt = protection_status_ko(prot, enabled, low_confidence)
     risk_colors = {
         "LOW": "prot-ok",
         "MEDIUM": "prot-warn",
@@ -575,16 +577,18 @@ def render_protection_mode_card(prot, enabled):
         "EXTREME": "prot-block",
     }
     status_cls = risk_colors.get(str(risk_level).upper(), "prot-ok")
+    streak_risk_ko = risk_level_ko(str(prot.get("streak_risk", risk_level)))
     _md(
         f'<div class="dash-card"><div class="card-title">🛡 6단계 보호 모드</div>'
         f'<table class="learn-table">'
-        f'<tr><td>보호 모드</td><td>{"ON" if enabled else "OFF"}</td></tr>'
-        f'<tr><td>위험도</td><td class="{status_cls}">{html.escape(str(risk_level))}</td></tr>'
-        f'<tr><td>현재 연패</td><td>{prot.get("current_streak", 0)}</td></tr>'
+        f'<tr><td>보호 모드</td><td>{protection_mode_on_ko(enabled)}</td></tr>'
+        f'<tr><td>현재 연패 위험</td><td class="{status_cls}">{html.escape(streak_risk_ko)}</td></tr>'
         f'<tr><td>최소 신뢰도</td><td>{round((prot.get("min_confidence_required") or 0.55) * 100, 0)}%</td></tr>'
+        f'<tr><td>위험도</td><td class="{status_cls}">{html.escape(risk_ko)}</td></tr>'
+        f'<tr><td>상태</td><td class="{status_cls}">{html.escape(status_txt)}</td></tr>'
         f'</table>'
         f'<div style="font-size:0.65rem;color:#64748b;margin-top:0.35rem;">'
-        f'위험도 표시 전용 — 예측은 항상 PLAYER/BANKER로 표시됩니다.</div></div>'
+        f'분석·기록 전용 — 예측은 항상 플레이어/뱅커로 표시됩니다.</div></div>'
     )
 
 
@@ -649,7 +653,7 @@ def render_data_management(db):
 
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Create backup now", key="btn_db_backup", use_container_width=True):
+        if st.button(BTN_BACKUP_NOW, key="btn_db_backup", use_container_width=True):
             try:
                 path = backup_database("manual")
                 if path and Path(path).exists():
@@ -668,7 +672,7 @@ def render_data_management(db):
         if bp.exists():
             try:
                 st.download_button(
-                    "Download latest DB backup",
+                    BTN_DOWNLOAD_BACKUP,
                     data=bp.read_bytes(),
                     file_name=bp.name,
                     mime="application/octet-stream",
@@ -704,26 +708,26 @@ def render_data_management(db):
     st.markdown("---")
     ec1, ec2, ec3 = st.columns(3)
     with ec1:
-        if st.button("Export DB", key="btn_export_db", use_container_width=True):
+        if st.button(BTN_EXPORT_DB, key="btn_export_db", use_container_width=True):
             try:
                 p = export_db_copy()
                 st.session_state.last_export_db = str(p)
-                st.success(f"Exported: {p.name}")
+                st.success(f"내보내기 완료: {p.name}")
             except Exception:
-                st.warning("Export 실패")
+                st.warning("내보내기 실패")
     with ec2:
-        if st.button("Export CSV history", key="btn_export_hist", use_container_width=True):
+        if st.button(BTN_EXPORT_CSV_HIST, key="btn_export_hist", use_container_width=True):
             try:
                 p = export_history_csv(db)
                 st.session_state.last_export_csv = str(p)
-                st.success(f"Exported: {p.name}")
+                st.success(f"내보내기 완료: {p.name}")
             except Exception:
-                st.warning("Export 실패")
+                st.warning("내보내기 실패")
     with ec3:
-        if st.button("Export CSV predictions", key="btn_export_pred", use_container_width=True):
+        if st.button(BTN_EXPORT_CSV_PRED, key="btn_export_pred", use_container_width=True):
             try:
                 p = export_predictions_csv(db)
-                st.success(f"Exported: {p.name}")
+                st.success(f"내보내기 완료: {p.name}")
             except Exception:
                 st.warning("Export 실패")
 
@@ -732,7 +736,7 @@ def render_data_management(db):
         if ep.exists():
             try:
                 st.download_button(
-                    "📥 Export DB 다운로드",
+                    BTN_DOWNLOAD_EXPORT,
                     data=ep.read_bytes(),
                     file_name=ep.name,
                     mime="application/octet-stream",
@@ -742,9 +746,9 @@ def render_data_management(db):
             except Exception:
                 pass
 
-    uploaded = st.file_uploader("Import DB (.db)", type=["db"], key="import_db_file")
+    uploaded = st.file_uploader(UPLOAD_LABEL, type=["db"], key="import_db_file")
     if uploaded is not None:
-        if st.button("Import DB (확인 필요)", key="btn_import_prompt", use_container_width=True):
+        if st.button(BTN_IMPORT_DB, key="btn_import_prompt", use_container_width=True):
             st.session_state.confirm_import = True
         if st.session_state.confirm_import:
             st.warning("기존 DB는 import 전 자동 백업됩니다. 덮어쓰시겠습니까?")
@@ -835,7 +839,7 @@ def render_six_grid(history):
                 cells.append('<div class="six-cell"><div class="empty"></div></div>')
 
     _md(
-        f'<div class="dash-card"><div class="card-title">🎲 6매 GRID</div>'
+        f'<div class="dash-card"><div class="card-title">🎲 {SIX_GRID_TITLE}</div>'
         f'<div class="six-scroll"><div class="six-wrap" '
         f'style="grid-template-columns:repeat({cols},36px);grid-template-rows:repeat(6,32px);">'
         f'{"".join(cells)}</div></div></div>'
@@ -873,7 +877,7 @@ def render_bigroad(road_data):
                 cells.append('<div class="road-cell"></div>')
 
     _md(
-        f'<div class="dash-card"><div class="card-title">🧩 Big Road</div>'
+        f'<div class="dash-card"><div class="card-title">🧩 {BIG_ROAD_TITLE}</div>'
         f'<div class="road-scroll"><div class="road-wrap" '
         f'style="grid-template-columns:repeat({cols},36px);grid-template-rows:repeat(6,32px);">'
         f'{"".join(cells)}</div></div></div>'
@@ -881,10 +885,10 @@ def render_bigroad(road_data):
 
 
 def render_derived_row(bigeye_grid, smallroad_grid, cockroach_grid):
+    grids = [bigeye_grid, smallroad_grid, cockroach_grid]
     cards = [
-        render_circle_road_html_only(bigeye_grid, "👁 BigEye"),
-        render_circle_road_html_only(smallroad_grid, "🔹 Small"),
-        render_circle_road_html_only(cockroach_grid, "🪳 Cockroach"),
+        render_circle_road_html_only(grids[i], DERIVED_ROAD_TITLES[i])
+        for i in range(3)
     ]
     _md(f'<div class="derived-row">{"".join(cards)}</div>')
 
@@ -1029,7 +1033,7 @@ except Exception:
 
 _md(
     f'<div class="dash-title">🔥 {html.escape(APP_NAME)}</div>'
-    f'<div class="dash-subtitle">{html.escape(VERSION)} · Baccarat Road Dashboard</div>'
+    f'<div class="dash-subtitle">{html.escape(VERSION)} · {html.escape(SUBTITLE)}</div>'
 )
 _md(render_cloud_warning_html())
 
@@ -1037,30 +1041,30 @@ _md(sticky_input_open())
 c1, c2, c3, c4, c5 = st.columns(5)
 
 with c1:
-    if st.button("🔵 PLAYER", use_container_width=True):
+    if st.button(BTN_PLAYER, use_container_width=True):
         process_new_hand(db, "P", lambda h: run_ai_analysis(
             h, db, st.session_state.protection_mode_enabled))
         st.rerun()
 
 with c2:
-    if st.button("🔴 BANKER", use_container_width=True):
+    if st.button(BTN_BANKER, use_container_width=True):
         process_new_hand(db, "B", lambda h: run_ai_analysis(
             h, db, st.session_state.protection_mode_enabled))
         st.rerun()
 
 with c3:
-    if st.button("🟢 TIE", use_container_width=True):
+    if st.button(BTN_TIE, use_container_width=True):
         process_new_hand(db, "T", lambda h: run_ai_analysis(
             h, db, st.session_state.protection_mode_enabled))
         st.rerun()
 
 with c4:
-    if st.button("↩ UNDO", use_container_width=True):
+    if st.button(BTN_UNDO, use_container_width=True):
         db.undo_last()
         st.rerun()
 
 with c5:
-    if st.button("🗑 RESET", use_container_width=True):
+    if st.button(BTN_RESET, use_container_width=True):
         db.reset_current()
         st.rerun()
 
@@ -1119,10 +1123,23 @@ render_history_chips(history)
 
 if grade and grade != "—":
     _md(
-        f'<div style="text-align:center;font-size:0.72rem;color:#8eb4ff;margin-bottom:0.35rem;">'
+        f'<div style="text-align:center;font-size:0.74rem;color:#8eb4ff;margin-bottom:0.3rem;">'
         f'품질 등급: <strong>{html.escape(str(grade))}</strong></div>'
     )
 render_ai_analysis(pred, conf, status, reason, ai_result)
+
+st.session_state.protection_mode_enabled = st.toggle(
+    "6단계 보호 모드",
+    value=st.session_state.protection_mode_enabled,
+    help="연패·위험 구간을 표시합니다. 예측은 항상 플레이어/뱅커로 표시됩니다.",
+)
+render_protection_mode_card(
+    prot,
+    st.session_state.protection_mode_enabled,
+    low_confidence=ai_result.get("low_confidence", False),
+)
+
+render_six_grid(history)
 
 render_bigroad(bigroad)
 
@@ -1139,23 +1156,15 @@ render_performance_card(stats)
 
 render_learning_card(learning)
 
-with st.expander("💾 Backup / Export / Import", expanded=False):
+with st.expander(EXP_BACKUP, expanded=False):
     render_data_management(db)
 
-with st.expander("⚙️ 고급 설정", expanded=False):
-    st.session_state.protection_mode_enabled = st.toggle(
-        "6단계 보호 모드",
-        value=st.session_state.protection_mode_enabled,
-        help="연패 시 예측 빈도를 줄이고 PASS를 늘립니다. 손실 방지를 보장하지 않습니다.",
-    )
-    render_protection_mode_card(prot, st.session_state.protection_mode_enabled)
+with st.expander(EXP_ADVANCED, expanded=False):
     render_db_status_card(db_status)
     render_data_count_card(ai_result.get("data_counts"))
-    with st.expander("📊 V6 Anti-Streak Dashboard", expanded=False):
+    with st.expander(EXP_V6, expanded=False):
         _md(render_v6_dashboard(ai_result.get("v6_dashboard") or {}))
-    with st.expander("🎲 6매 GRID", expanded=False):
-        render_six_grid(history)
-    with st.expander("🏆 패턴 랭킹", expanded=False):
+    with st.expander(EXP_PATTERN, expanded=False):
         render_pattern_ranking(db)
     if st.button("AI 백테스트 실행", key="btn_run_backtest", use_container_width=True):
         st.session_state.backtest_results = run_backtest_report(db)

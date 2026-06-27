@@ -26,13 +26,13 @@ def render_access_gate() -> bool:
     if st.session_state.get("access_ok"):
         return True
 
-    st.markdown("### CASINO PRO AI — Access")
-    st.caption("Access code is configured. Enter it to continue.")
-    entered = st.text_input("Access code", type="password", key="access_code_input")
-    if st.button("Continue", key="access_code_submit", use_container_width=True):
+    st.markdown("### CASINO PRO AI — 접근")
+    st.caption("접근 코드가 설정되어 있습니다. 계속하려면 입력하세요.")
+    entered = st.text_input("접근 코드", type="password", key="access_code_input")
+    if st.button("계속", key="access_code_submit", use_container_width=True):
         if entered == code:
             st.session_state.access_ok = True
             st.rerun()
         else:
-            st.error("Invalid access code.")
+            st.error("접근 코드가 올바르지 않습니다.")
     return False
