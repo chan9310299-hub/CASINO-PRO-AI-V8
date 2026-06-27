@@ -81,6 +81,11 @@ a[href*="github.com/streamlit"] { display: none !important; }
 .v11-reason-label { flex: 1; }
 .v11-reason-score { font-weight: 800; color: #3dffa0; margin-left: 0.5rem; }
 .similar-pattern-line { font-size: 0.76rem; color: #94a3b8; margin: 0.35rem 0 0.15rem; line-height: 1.35; }
+.cloud-error-banner {
+    background: rgba(239, 68, 68, 0.14); border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #fca5a5; font-size: 0.78rem; text-align: center; padding: 0.4rem 0.5rem;
+    border-radius: 10px; margin-bottom: 0.3rem;
+}
 .cloud-ok-banner {
     background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.35);
     color: #86efac; font-size: 0.78rem; text-align: center; padding: 0.4rem 0.5rem;

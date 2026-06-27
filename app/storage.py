@@ -150,7 +150,8 @@ class StorageBackend:
         return {
             **status,
             "storage_mode": "cloud" if self._cloud else "local",
-            "cloud_connected": self._cloud,
+            "cloud_connected": self._cloud and not getattr(self._db, "connection_error", None),
+            "connection_error": getattr(self._db, "connection_error", None),
             "total_input_hands": len(history),
             "total_ai_predictions": stats.get("total_predictions", 0),
             "pattern_memory_count": pattern_count,

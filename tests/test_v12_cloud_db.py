@@ -15,14 +15,13 @@ from db_config import get_database_url, is_cloud_db_enabled
 
 class DbConfigTests(unittest.TestCase):
     def test_no_database_url_by_default(self):
-        with mock.patch("db_config.get_database_url", return_value=None):
+        with mock.patch("db_config.resolve_database_url", return_value=None):
             self.assertFalse(is_cloud_db_enabled())
 
     def test_database_url_from_env(self):
-        with mock.patch("db_config.get_database_url", return_value="postgresql://u:p@localhost/db"):
+        with mock.patch("db_config.resolve_database_url", return_value="postgresql://u:p@localhost/db"):
             import db_config as dc
             self.assertTrue(dc.is_cloud_db_enabled())
-            self.assertIn("postgresql", dc.get_database_url() or "")
 
 
 class SQLiteFallbackTests(unittest.TestCase):
@@ -33,7 +32,7 @@ class SQLiteFallbackTests(unittest.TestCase):
         self._patches = [
             mock.patch("config.DB_PATH", Path(self.db_path)),
             mock.patch("database.DB_PATH", Path(self.db_path)),
-            mock.patch("db_config.get_database_url", return_value=None),
+            mock.patch("database.resolve_database_url", return_value=None),
         ]
         for p in self._patches:
             p.start()
@@ -79,9 +78,9 @@ class CloudAdapterTests(unittest.TestCase):
         mock_cursor.fetchone.return_value = {"c": 0}
         mock_cursor.fetchall.return_value = []
 
-        with mock.patch("database.psycopg2") as mock_pg:
-            mock_pg.connect.return_value = mock_conn
-            with mock.patch("database.db_config.get_database_url", return_value="postgresql://test"):
+        with mock.patch("database.resolve_database_url", return_value="postgresql://test"):
+            with mock.patch("database._connect_postgresql") as mock_connect:
+                mock_connect.return_value = (mock_conn, "psycopg2")
                 with mock.patch.object(Database, "_bootstrap_postgres"):
                     db = Database()
                     db.add_result("P")

@@ -18,7 +18,7 @@ class DatabaseDualBackendTests(unittest.TestCase):
         self._patches = [
             mock.patch("config.DB_PATH", Path(self.db_path)),
             mock.patch("database.DB_PATH", Path(self.db_path)),
-            mock.patch("database.db_config.get_database_url", return_value=None),
+            mock.patch("database.resolve_database_url", return_value=None),
         ]
         for p in self._patches:
             p.start()
@@ -65,7 +65,7 @@ class DatabasePostgresMockTests(unittest.TestCase):
 
         with mock.patch("database.psycopg2") as mock_pg:
             mock_pg.connect.return_value = mock_conn
-            with mock.patch("database.db_config.get_database_url", return_value="postgresql://x"):
+            with mock.patch("database.resolve_database_url", return_value="postgresql://x"):
                 with mock.patch.object(Database, "_bootstrap_postgres"):
                     db = Database()
                     db.undo_last()

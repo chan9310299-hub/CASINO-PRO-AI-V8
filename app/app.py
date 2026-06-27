@@ -962,7 +962,7 @@ except Exception:
     pass
 
 try:
-    from storage import get_storage_backend
+    from storage import get_storage_backend, is_cloud_db_enabled
     from v12_ui import render_cloud_storage_banner
 
     _storage = get_storage_backend()
@@ -991,7 +991,11 @@ try:
 except Exception:
     pass
 
-_md(render_cloud_storage_banner(storage_status.get("cloud_connected", False)))
+_md(render_cloud_storage_banner(
+    storage_status.get("cloud_connected", False),
+    connection_error=getattr(db, "connection_error", None) or storage_status.get("connection_error"),
+    cloud_configured=is_cloud_db_enabled(),
+))
 
 history = []
 try:
