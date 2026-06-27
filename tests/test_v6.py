@@ -388,11 +388,12 @@ class V6ExtendedTests(unittest.TestCase):
         dash = r.get("v6_dashboard", {})
         self.assertIn("current_losing_streak", dash)
 
-    def test_pass_prediction_possible(self):
+    def test_final_prediction_always_pb(self):
         history = ["P", "B"] * 4
         kwargs = _build_inputs(history)
         r = RoadmapAI(db=self.db).analyze(**kwargs, db=self.db)
-        self.assertIn(r["prediction"], ("P", "B", "PASS"))
+        self.assertIn(r["prediction"], ("P", "B"))
+        self.assertNotEqual(r["prediction"], "PASS")
 
     def test_results_table_preserved(self):
         self.db.add_result("P")

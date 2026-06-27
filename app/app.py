@@ -9,6 +9,7 @@ _APP_DIR = Path(__file__).resolve().parent
 if str(_APP_DIR) not in sys.path:
     sys.path.insert(0, str(_APP_DIR))
 
+from ai.final_prediction import LOW_CONFIDENCE_STATUS
 from local_config import APP_NAME, EXPORT_DIR, VERSION
 from bigroad import BigRoadEngine
 from roadmap_ai import RoadmapAI
@@ -193,6 +194,33 @@ header[data-testid="stHeader"] { background: transparent; }
     background: rgba(30,41,59,0.8); border: 1px solid rgba(148,163,184,0.3);
     color: #94a3b8; font-size: 0.88rem;
 }
+.pred-low-conf {
+    border-color: rgba(251, 146, 60, 0.75) !important;
+    box-shadow: 0 0 16px rgba(251, 146, 60, 0.25);
+}
+.low-conf-banner {
+    background: rgba(120, 53, 15, 0.55); border: 1px solid rgba(251, 146, 60, 0.55);
+    border-radius: 10px; padding: 0.45rem 0.6rem; text-align: center;
+    font-size: 0.78rem; font-weight: 700; color: #fdba74; margin-bottom: 0.45rem;
+}
+.prob-panel {
+    background: rgba(12, 20, 36, 0.85); border: 1px solid rgba(62, 140, 255, 0.18);
+    border-radius: 10px; padding: 0.5rem 0.65rem; margin-bottom: 0.45rem;
+    font-size: 0.76rem; color: #cbd5e1; line-height: 1.55;
+}
+.prob-panel .prob-p { color: #7ec8ff; font-weight: 700; }
+.prob-panel .prob-b { color: #ff8a9a; font-weight: 700; }
+.prob-panel .prob-hit { color: #3dffa0; font-weight: 700; }
+.pred-meta-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 0.45rem;
+}
+.pred-meta-item {
+    background: rgba(12, 20, 36, 0.85); border: 1px solid rgba(62, 140, 255, 0.15);
+    border-radius: 10px; padding: 0.45rem; text-align: center;
+}
+.pred-meta-label { font-size: 0.62rem; color: #64748b; margin-bottom: 0.15rem; }
+.pred-meta-value { font-size: 0.95rem; font-weight: 800; color: #e2e8f0; }
+.pred-meta-value.orange { color: #fdba74; }
 .conf-big {
     font-size: 1.85rem; font-weight: 800; color: #3dffa0; text-align: center;
     line-height: 1.1; margin: 0.15rem 0 0.35rem;
@@ -280,6 +308,7 @@ div[data-testid="column"] .stButton > button:hover {
 .health-red { border-color: #ef4444 !important; }
 .health-gray { border-color: #64748b !important; }
 .prot-ok { color: #3dffa0; font-weight: 700; }
+.prot-warn { color: #fdba74; font-weight: 700; }
 .prot-block { color: #f87171; font-weight: 700; }
 .cloud-warn {
     font-size: 0.78rem; padding: 0.55rem 0.7rem; margin-bottom: 0.55rem;
@@ -324,42 +353,64 @@ def render_ai_analysis(pred, conf, status, reason, ai_result=None):
     prob_p = ai_result.get("probability_p")
     prob_b = ai_result.get("probability_b")
     voters = ai_result.get("voters") or []
+    low_conf = ai_result.get("low_confidence", False) or (conf or 0) < 0.60
+    conf_label = ai_result.get("confidence_label") or (
+        "High" if (conf or 0) >= 0.75 else "Medium" if (conf or 0) >= 0.55 else "Low"
+    )
+    expected_hit = ai_result.get("expected_hit_rate")
+    if expected_hit is None and pred in ("P", "B"):
+        side = prob_p if pred == "P" else prob_b
+        expected_hit = round(max(conf or 0, side or 0.5) * 100, 1)
 
     if pred is None:
         pred_block = (
             f'<div class="pred-card pred-wait">'
             f'{html.escape(status or "6개 입력 후 7번째부터 예측 시작")}</div>'
         )
-        conf_block = ""
         prob_block = ""
-    elif pred == "PASS":
-        pred_block = f'<div class="pred-card pred-wait">PASS</div>'
-        conf_block = (
-            f'<div class="conf-label" style="margin-bottom:0.5rem;">'
-            f'{html.escape(status or "통계적으로 신뢰할 수 있는 예측 없음")}</div>'
-        )
-        prob_block = ""
-    else:
+        meta_block = ""
+        low_block = ""
+    elif pred in ("P", "B"):
         label = "PLAYER" if pred == "P" else "BANKER"
         cls = "pred-player" if pred == "P" else "pred-banker"
-        pct = round(conf * 100, 1)
+        if low_conf:
+            cls += " pred-low-conf"
         pred_block = f'<div class="pred-card {cls}">{label}</div>'
-        conf_block = (
-            f'<div class="conf-big">{pct}%</div>'
-            f'<div class="conf-label">신뢰도 CONFIDENCE</div>'
+        meta_block = (
+            f'<div class="pred-meta-row">'
+            f'<div class="pred-meta-item">'
+            f'<div class="pred-meta-label">Expected hit rate</div>'
+            f'<div class="pred-meta-value{" orange" if low_conf else ""}">{expected_hit}%</div>'
+            f'</div>'
+            f'<div class="pred-meta-item">'
+            f'<div class="pred-meta-label">Confidence</div>'
+            f'<div class="pred-meta-value">{html.escape(conf_label)}</div>'
+            f'</div></div>'
         )
         p_pct = round((prob_p if prob_p is not None else 0.5) * 100, 1)
         b_pct = round((prob_b if prob_b is not None else 0.5) * 100, 1)
         prob_block = (
-            f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:0.45rem;">'
-            f'<div style="text-align:center;font-size:0.72rem;color:#7ec8ff;">'
-            f'PLAYER {p_pct}%</div>'
-            f'<div style="text-align:center;font-size:0.72rem;color:#ff8a9a;">'
-            f'BANKER {b_pct}%</div></div>'
+            f'<div class="prob-panel">'
+            f'<div><span class="prob-p">PLAYER</span> : {p_pct}%</div>'
+            f'<div><span class="prob-b">BANKER</span> : {b_pct}%</div>'
+            f'<div style="margin-top:0.25rem;">Expected hit rate:<br>'
+            f'<span class="prob-hit">{expected_hit}%</span></div></div>'
         )
+        low_block = (
+            f'<div class="low-conf-banner">⚠️ {html.escape(LOW_CONFIDENCE_STATUS)}</div>'
+            if low_conf else ""
+        )
+    else:
+        label = "PLAYER" if prob_p is not None and prob_p >= (prob_b or 0) else "BANKER"
+        pred_block = f'<div class="pred-card pred-player">{label}</div>'
+        prob_block = ""
+        meta_block = ""
+        low_block = ""
 
     items = "".join(f"<li>{html.escape(str(r))}</li>" for r in reason) or "<li>—</li>"
     status_text = html.escape(status or "분석 대기")
+    if low_conf and pred in ("P", "B"):
+        status_text = html.escape(LOW_CONFIDENCE_STATUS)
 
     voter_labels = {
         "trend_ai": "Trend AI",
@@ -381,10 +432,10 @@ def render_ai_analysis(pred, conf, status, reason, ai_result=None):
     }
     voter_rows = ""
     for v in voters:
-        label = voter_labels.get(v.get("name"), v.get("name", "—"))
-        vote = v.get("vote") or "—"
+        vlabel = voter_labels.get(v.get("name"), v.get("name", "—"))
+        vote = v.get("vote") or "neutral"
         voter_rows += (
-            f'<tr><td>{html.escape(label)}</td>'
+            f'<tr><td>{html.escape(vlabel)}</td>'
             f'<td>{html.escape(str(vote))}</td></tr>'
         )
     voter_table = (
@@ -400,8 +451,8 @@ def render_ai_analysis(pred, conf, status, reason, ai_result=None):
         )
 
     _md(
-        f'<div class="dash-card"><div class="card-title">🧠 AI 분석</div>'
-        f'{pred_block}{conf_block}{prob_block}'
+        f'<div class="dash-card"><div class="card-title">🎯 AI Prediction</div>'
+        f'{low_block}{pred_block}{meta_block}{prob_block}'
         f'<div class="status-box">📌 {status_text}</div>'
         f'<div class="reason-box"><ul>{items}</ul></div>'
         f'{voter_section}</div>'
@@ -516,20 +567,24 @@ def render_db_status_card(db_status):
 
 def render_protection_mode_card(prot, enabled):
     prot = prot or {}
-    allowed = prot.get("prediction_allowed", True)
-    streak_risk = prot.get("streak_risk", "LOW")
-    status_cls = "prot-ok" if allowed else "prot-block"
-    status_txt = "예측 허용" if allowed else "예측 차단"
+    risk_level = prot.get("risk_level") or prot.get("streak_risk", "LOW")
+    risk_colors = {
+        "LOW": "prot-ok",
+        "MEDIUM": "prot-warn",
+        "HIGH": "prot-block",
+        "EXTREME": "prot-block",
+    }
+    status_cls = risk_colors.get(str(risk_level).upper(), "prot-ok")
     _md(
         f'<div class="dash-card"><div class="card-title">🛡 6단계 보호 모드</div>'
         f'<table class="learn-table">'
         f'<tr><td>보호 모드</td><td>{"ON" if enabled else "OFF"}</td></tr>'
-        f'<tr><td>현재 연패 위험</td><td>{html.escape(str(streak_risk))}</td></tr>'
+        f'<tr><td>위험도</td><td class="{status_cls}">{html.escape(str(risk_level))}</td></tr>'
+        f'<tr><td>현재 연패</td><td>{prot.get("current_streak", 0)}</td></tr>'
         f'<tr><td>최소 신뢰도</td><td>{round((prot.get("min_confidence_required") or 0.55) * 100, 0)}%</td></tr>'
-        f'<tr><td>상태</td><td class="{status_cls}">{status_txt}</td></tr>'
         f'</table>'
         f'<div style="font-size:0.65rem;color:#64748b;margin-top:0.35rem;">'
-        f'통계적 노출 감소용 — 손실 방지를 보장하지 않습니다.</div></div>'
+        f'위험도 표시 전용 — 예측은 항상 PLAYER/BANKER로 표시됩니다.</div></div>'
     )
 
 

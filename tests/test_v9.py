@@ -35,7 +35,18 @@ from ai.v9_signals import (
     streak_ai,
     two_side_balance_ai,
 )
-from ai.meta_vote_v9 import MIN_SAMPLE_SIZE, meta_vote_v9_decide
+from ai.final_prediction import (
+    LOW_CONFIDENCE_CAP,
+    apply_low_confidence,
+    assert_final_prediction,
+    compute_expected_hit_rate,
+    confidence_label,
+    resolve_weighted_prediction,
+    tie_break_prediction,
+)
+from ai.meta_vote_v9 import meta_vote_v9_decide
+
+MIN_SAMPLE_SIZE = 8
 
 
 class V9SignalsTest(unittest.TestCase):
@@ -158,34 +169,40 @@ class MetaVoteV9Test(unittest.TestCase):
     def _voter(self, name, vote, conf=0.8):
         return {"name": name, "vote": vote, "confidence": conf, "weight": 1.0}
 
-    def test_small_sample_pass(self):
+    def _assert_final_pb(self, result):
+        self.assertIn(result["prediction"], ("P", "B"))
+        self.assertNotEqual(result["prediction"], "PASS")
+
+    def test_small_sample_low_confidence(self):
         result = meta_vote_v9_decide(
             existing_voters=[self._voter("trend_ai", "P")],
             v9_signals=[],
             sample_size=MIN_SAMPLE_SIZE - 1,
         )
-        self.assertEqual(result["prediction"], "PASS")
-        self.assertEqual(result["quality_grade"], "PASS")
-        self.assertTrue(result["pass_flag"])
+        self._assert_final_pb(result)
+        self.assertTrue(result["low_confidence"])
+        self.assertLessEqual(result["confidence"], LOW_CONFIDENCE_CAP)
 
-    def test_strong_conflict_pass(self):
+    def test_strong_conflict_still_predicts(self):
         voters = [self._voter("a", "P"), self._voter("b", "B")] * 5
         result = meta_vote_v9_decide(
             existing_voters=voters,
             v9_signals=[],
             sample_size=20,
         )
-        self.assertEqual(result["prediction"], "PASS")
+        self._assert_final_pb(result)
+        self.assertTrue(result["low_confidence"])
 
-    def test_protection_mode_blocks(self):
+    def test_protection_mode_low_confidence_not_block(self):
         result = meta_vote_v9_decide(
             existing_voters=[self._voter("trend_ai", "P", 0.9)],
             v9_signals=[],
             sample_size=20,
             protection_mode_enabled=True,
-            prot_meta={"prediction_allowed": False},
+            prot_meta={"risk_level": "EXTREME"},
         )
-        self.assertEqual(result["prediction"], "PASS")
+        self._assert_final_pb(result)
+        self.assertTrue(result["low_confidence"])
 
     def test_clear_p_prediction(self):
         voters = [self._voter("trend_ai", "P", 0.9)] * 4
@@ -194,11 +211,11 @@ class MetaVoteV9Test(unittest.TestCase):
             v9_signals=[],
             sample_size=20,
             protection_mode_enabled=False,
-            prot_meta={"prediction_allowed": True},
+            prot_meta={"risk_level": "LOW"},
         )
         self.assertEqual(result["prediction"], "P")
-        self.assertFalse(result["pass_flag"])
         self.assertIn(result["quality_grade"], ("A", "B", "C"))
+        self.assertIn("expected_hit_rate", result)
 
     def test_voter_summary_present(self):
         result = meta_vote_v9_decide(
@@ -212,10 +229,40 @@ class MetaVoteV9Test(unittest.TestCase):
             }],
             sample_size=15,
             protection_mode_enabled=False,
-            prot_meta={"prediction_allowed": True},
+            prot_meta={"risk_level": "LOW"},
         )
+        self._assert_final_pb(result)
         self.assertGreaterEqual(len(result["voters"]), 2)
         self.assertIn("reasons", result)
+
+
+class FinalPredictionHelpersTest(unittest.TestCase):
+    def test_tie_break_memory(self):
+        pred = tie_break_prediction(
+            ["P", "B"],
+            {"weighted_score": {"P": 1, "B": 1}},
+            {"p_probability": 0.7, "b_probability": 0.3},
+        )
+        self.assertEqual(pred, "P")
+
+    def test_resolve_always_pb(self):
+        pred, conf, _, _ = resolve_weighted_prediction(0, 0, ["B", "B"], {"weighted_score": {"P": 0, "B": 0}})
+        self.assertIn(pred, ("P", "B"))
+
+    def test_low_confidence_cap(self):
+        self.assertLessEqual(apply_low_confidence(0.85, True), LOW_CONFIDENCE_CAP)
+
+    def test_expected_hit_rate(self):
+        hit = compute_expected_hit_rate(0.72, 0.72, 0.28, "P")
+        self.assertGreaterEqual(hit, 70)
+
+    def test_confidence_label(self):
+        self.assertEqual(confidence_label(0.8), "High")
+        self.assertEqual(confidence_label(0.6), "Medium")
+
+    def test_assert_final_rejects_pass(self):
+        with self.assertRaises(ValueError):
+            assert_final_prediction("PASS")
 
 
 class StorageWrapperTest(unittest.TestCase):

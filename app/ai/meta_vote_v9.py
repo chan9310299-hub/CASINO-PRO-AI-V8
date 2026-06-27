@@ -1,12 +1,16 @@
-"""CASINO PRO AI v9 — Meta AI final decision engine."""
+"""CASINO PRO AI v9 — Meta AI final decision engine (always P/B)."""
 
 from typing import Any, Dict, List, Optional
 
+from ai.final_prediction import (
+    apply_low_confidence,
+    compute_expected_hit_rate,
+    confidence_label,
+    resolve_weighted_prediction,
+    tie_break_prediction,
+)
 from ai.quality_grade import grade_prediction
 from ai.v9_signals import DEFAULT_V9_WEIGHTS, signal_to_voter
-
-MIN_SAMPLE_SIZE = 8
-STRONG_CONFLICT_THRESHOLD = 0.42
 
 
 def _conflict_ratio(voters: List[Dict[str, Any]]) -> float:
@@ -36,33 +40,41 @@ def meta_vote_v9_decide(
     prot_meta: Optional[Dict[str, Any]] = None,
     road_agreement: float = 0.0,
     risk_level: str = "LOW",
+    history: Optional[List[str]] = None,
+    base_result: Optional[Dict[str, Any]] = None,
+    pattern_sim: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     prot_meta = prot_meta or {}
+    base_result = base_result or {}
+    history = history or []
+    pattern_sim = pattern_sim or {}
+
     v9_voters = [signal_to_voter(s) for s in v9_signals]
     all_voters = list(existing_voters or []) + v9_voters
 
     reasons: List[str] = []
-    is_pass = False
+    low_confidence = False
 
-    if sample_size < MIN_SAMPLE_SIZE:
-        is_pass = True
-        reasons.append(f"표본 {sample_size} < {MIN_SAMPLE_SIZE} — PASS")
+    if sample_size < 8:
+        low_confidence = True
+        reasons.append(f"표본 {sample_size} < 8 — 저신뢰")
 
     conflict = _conflict_ratio(all_voters)
-    if conflict >= STRONG_CONFLICT_THRESHOLD:
-        is_pass = True
-        reasons.append(f"신호 강한 충돌 ({round(conflict * 100)}%) — PASS")
+    if conflict >= 0.42:
+        low_confidence = True
+        reasons.append(f"신호 강한 충돌 ({round(conflict * 100)}%) — 저신뢰")
 
-    if protection_mode_enabled and not prot_meta.get("prediction_allowed", True):
-        is_pass = True
-        reasons.append("6단계 보호 모드 — PASS")
+    prot_risk = prot_meta.get("risk_level", "LOW")
+    if protection_mode_enabled and prot_risk in ("HIGH", "EXTREME"):
+        low_confidence = True
+        reasons.append(f"6단계 보호 — 위험도 {prot_risk}")
 
     for sig in v9_signals:
         if sig.get("name") == "anti_six_loss_ai" and sig.get("prediction") == "PASS":
             if sig.get("risk_level") in ("HIGH", "EXTREME") and protection_mode_enabled:
-                is_pass = True
+                low_confidence = True
                 if sig.get("reason") not in reasons:
-                    reasons.append(sig.get("reason", "anti_six_loss PASS"))
+                    reasons.append(sig.get("reason", "연패 보호 — 저신뢰"))
 
     p_score = b_score = 0.0
     for voter in all_voters:
@@ -79,39 +91,36 @@ def meta_vote_v9_decide(
         else:
             b_score += w
 
-    total = p_score + b_score
-    if total <= 0:
-        is_pass = True
-        reasons.append("유효 투표 없음 — PASS")
-        prediction = "PASS"
-        confidence = 0.0
-        prob_p = prob_b = 0.5
-    else:
-        prob_p = round(p_score / total, 4)
-        prob_b = round(b_score / total, 4)
-        prediction = "P" if prob_p >= prob_b else "B"
-        confidence = round(max(prob_p, prob_b), 4)
+    prediction, confidence, prob_p, prob_b = resolve_weighted_prediction(
+        p_score, b_score, history, base_result, pattern_sim,
+    )
 
-    if is_pass:
-        prediction = "PASS"
-        quality_grade = "PASS"
-    else:
-        quality_grade = grade_prediction(confidence, risk_level, road_agreement, False)
+    if p_score + b_score <= 0:
+        low_confidence = True
+        reasons.append("유효 투표 없음 — 기본 분석 사용")
+
+    confidence = apply_low_confidence(confidence, low_confidence)
+    quality_grade = grade_prediction(confidence, risk_level, road_agreement, low_confidence)
 
     for v in all_voters:
         r = v.get("reason")
         if r and r not in reasons:
             reasons.append(r)
 
+    expected_hit = compute_expected_hit_rate(confidence, prob_p, prob_b, prediction)
+
     return {
         "prediction": prediction,
         "confidence": confidence,
-        "probability_p": prob_p if total > 0 else 0.5,
-        "probability_b": prob_b if total > 0 else 0.5,
+        "probability_p": prob_p,
+        "probability_b": prob_b,
         "quality_grade": quality_grade,
+        "confidence_label": confidence_label(confidence),
+        "expected_hit_rate": expected_hit,
         "reasons": reasons,
         "voters": all_voters,
-        "pass_flag": is_pass,
+        "low_confidence": low_confidence,
+        "pass_flag": low_confidence,
         "conflict_ratio": conflict,
-        "meta_score": round(confidence * (prob_p if prediction == "P" else prob_b), 4) if not is_pass else 0.0,
+        "meta_score": round(confidence * (prob_p if prediction == "P" else prob_b), 4),
     }

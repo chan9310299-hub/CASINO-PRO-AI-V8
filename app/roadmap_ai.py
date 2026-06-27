@@ -18,10 +18,18 @@ try:
 except Exception:
     collect_v9_signals = None
     meta_vote_v9_decide = None
-from ai.pass_system import PASS_MESSAGE, evaluate_pass
+from ai.final_prediction import (
+    LOW_CONFIDENCE_STATUS,
+    apply_low_confidence,
+    assert_final_prediction,
+    compute_expected_hit_rate,
+    confidence_label,
+    tie_break_prediction,
+)
+from ai.pass_system import evaluate_pass
 from ai.pattern_similarity import analyze_pattern_similarity
 from ai.prediction_engine import PredictionEngine
-from ai.protection_mode import PASS_MSG, apply_protection_mode
+from ai.protection_mode import apply_protection_mode
 from ai.quality_grade import (
     INSUFFICIENT_MSG,
     calibrate_confidence,
@@ -50,9 +58,9 @@ def _signal_conflicts(voters: List[Dict[str, Any]]) -> float:
     return round(min(p, b) / len(votes), 4)
 
 
-def _prediction_quality(confidence: float, risk_level: str, is_pass: bool) -> str:
-    if is_pass:
-        return "PASS"
+def _prediction_quality(confidence: float, risk_level: str, low_confidence: bool) -> str:
+    if low_confidence:
+        return "Low"
     if risk_level in ("HIGH", "EXTREME"):
         return "Danger"
     if confidence >= 0.75:
@@ -162,7 +170,7 @@ class RoadmapAI:
             "pattern_similarity": pattern_sim,
             "data_counts": data_counts,
             "v6_dashboard": {},
-            "quality_grade": "PASS",
+            "quality_grade": "C",
             "protection_mode": {},
             "performance": {},
         }
@@ -219,7 +227,7 @@ class RoadmapAI:
             prediction_volatility=min(current_streak / 10.0, 1.0),
         )
 
-        is_pass, pass_reason = evaluate_pass(
+        is_low, pass_reason = evaluate_pass(
             confidence,
             risk["risk_level"],
             sim_pct,
@@ -227,17 +235,17 @@ class RoadmapAI:
             current_streak,
             bad,
         )
+        low_confidence = is_low
 
-        prot_pass, _, prot_meta = apply_protection_mode(
+        _, _, prot_meta = apply_protection_mode(
             confidence,
             risk["risk_level"],
             road_agreement,
             current_streak,
             enabled=protection_mode_enabled,
         )
-        if prot_pass and protection_mode_enabled:
-            is_pass = True
-            pass_reason = pass_reason or PASS_MSG
+        if protection_mode_enabled and prot_meta.get("risk_level") in ("HIGH", "EXTREME"):
+            low_confidence = True
 
         v9_extra_reasons: List[str] = []
         v9_quality_grade = None
@@ -260,23 +268,29 @@ class RoadmapAI:
                     prot_meta=prot_meta,
                     road_agreement=road_agreement,
                     risk_level=risk["risk_level"],
+                    history=history,
+                    base_result=base,
+                    pattern_sim=pattern_sim,
                 )
                 voters = v9_decision.get("voters") or voters
                 v9_extra_reasons = list(v9_decision.get("reasons") or [])
                 v9_quality_grade = v9_decision.get("quality_grade")
-                if v9_decision.get("pass_flag"):
-                    is_pass = True
-                    pass_reason = pass_reason or "v9 Meta AI — PASS"
-                elif v9_decision.get("prediction") in ("P", "B"):
+                if v9_decision.get("low_confidence"):
+                    low_confidence = True
+                if v9_decision.get("prediction") in ("P", "B"):
                     meta["prediction"] = v9_decision["prediction"]
                     confidence = v9_decision.get("confidence", confidence)
+                    meta["probability_p"] = v9_decision.get("probability_p", meta.get("probability_p", 0.5))
+                    meta["probability_b"] = v9_decision.get("probability_b", meta.get("probability_b", 0.5))
             except Exception:
                 pass
 
         if detect_unstable_pattern(len(pb), trend, conflict):
-            if not is_pass:
-                is_pass = True
-                pass_reason = pass_reason or "불안정 패턴 — PASS"
+            low_confidence = True
+            pass_reason = pass_reason or "불안정 패턴 — 저신뢰"
+
+        if is_cold:
+            low_confidence = True
 
         merged_reason = list(base.get("reason_in_korean") or base.get("reason") or [])
         if is_cold and INSUFFICIENT_MSG not in merged_reason:
@@ -293,30 +307,28 @@ class RoadmapAI:
                 merged_reason.append(msg)
 
         prediction = meta.get("prediction")
-        status = base.get("status", "")
-        quality = _prediction_quality(confidence, risk["risk_level"], is_pass)
-        quality_grade = grade_prediction(confidence, risk["risk_level"], road_agreement, is_pass)
-        if v9_quality_grade and not is_pass:
+        if prediction not in ("P", "B"):
+            prediction = tie_break_prediction(history, base, pattern_sim)
+
+        confidence = apply_low_confidence(confidence, low_confidence)
+        status = LOW_CONFIDENCE_STATUS if low_confidence else base.get("status", "")
+        quality = _prediction_quality(confidence, risk["risk_level"], low_confidence)
+        quality_grade = grade_prediction(confidence, risk["risk_level"], road_agreement, low_confidence)
+        if v9_quality_grade:
             quality_grade = v9_quality_grade
 
-        if is_pass:
-            prediction = "PASS"
-            status = PASS_MESSAGE
-            quality = "PASS"
-            quality_grade = "PASS"
-            if pass_reason and pass_reason not in merged_reason:
-                merged_reason.insert(0, pass_reason)
-        elif is_cold:
-            prediction = "PASS"
-            status = INSUFFICIENT_MSG
-            is_pass = True
-            quality = "PASS"
-            quality_grade = "PASS"
+        if pass_reason and low_confidence and pass_reason not in merged_reason:
+            merged_reason.insert(0, pass_reason)
 
         probs = smooth_probabilities(
             meta.get("probability_p", 0.5),
             meta.get("probability_b", 0.5),
         )
+        expected_hit = compute_expected_hit_rate(
+            confidence, probs["P"], probs["B"], prediction,
+        )
+
+        assert_final_prediction(prediction)
 
         backtests = {}
         try:
@@ -333,7 +345,7 @@ class RoadmapAI:
         except Exception:
             pass
 
-        safe_rate = round(100.0, 2) if not is_pass and quality == "Safe" else 0.0
+        safe_rate = round(100.0, 2) if not low_confidence and quality == "Safe" else 0.0
         danger_rate = 100.0 if quality == "Danger" else 0.0
 
         v6_dashboard = {
@@ -373,7 +385,7 @@ class RoadmapAI:
                 "road_agreement": road_agreement,
                 "pattern_similarity": sim_pct,
                 "meta_score": meta.get("meta_score"),
-                "pass_flag": is_pass,
+                "pass_flag": low_confidence,
                 "losing_streak": current_streak,
                 "prediction_quality": quality,
             })
@@ -396,7 +408,10 @@ class RoadmapAI:
             "risk_level": risk["risk_level"],
             "risk_score": risk["risk_score"],
             "road_agreement": road_agreement,
-            "pass_flag": is_pass,
+            "pass_flag": low_confidence,
+            "low_confidence": low_confidence,
+            "expected_hit_rate": expected_hit,
+            "confidence_label": confidence_label(confidence),
             "meta_score": meta.get("meta_score"),
             "quality_grade": quality_grade,
             "protection_mode": prot_meta,

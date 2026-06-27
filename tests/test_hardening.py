@@ -160,8 +160,8 @@ class QualityGradeTests(unittest.TestCase):
         self.assertTrue(cold_start_mode(6, 0))
         self.assertFalse(cold_start_mode(20, 20))
 
-    def test_grade_pass_on_high_risk(self):
-        self.assertEqual(grade_prediction(0.9, "HIGH", 80, False), "PASS")
+    def test_grade_c_on_high_risk(self):
+        self.assertEqual(grade_prediction(0.9, "HIGH", 80, False), "C")
 
     def test_grade_a(self):
         self.assertEqual(grade_prediction(0.85, "LOW", 80, False), "A")
@@ -187,18 +187,20 @@ class ProtectionModeTests(unittest.TestCase):
         self.assertFalse(blocked)
         self.assertTrue(meta["prediction_allowed"])
 
-    def test_high_risk_blocks(self):
+    def test_high_risk_never_blocks(self):
         blocked, _, meta = apply_protection_mode(0.9, "HIGH", 80, 0)
-        self.assertTrue(blocked)
-        self.assertFalse(meta["prediction_allowed"])
+        self.assertFalse(blocked)
+        self.assertTrue(meta["prediction_allowed"])
+        self.assertIn(meta["risk_level"], ("HIGH", "EXTREME", "MEDIUM"))
 
-    def test_streak_requires_high_confidence(self):
-        blocked, min_c, _ = apply_protection_mode(0.9, "LOW", 80, 4)
-        self.assertTrue(blocked)
+    def test_streak_elevates_risk(self):
+        blocked, min_c, meta = apply_protection_mode(0.9, "LOW", 80, 4)
+        self.assertFalse(blocked)
         self.assertGreaterEqual(min_c, 0.98)
+        self.assertIn(meta["risk_level"], ("EXTREME", "HIGH"))
 
     def test_pass_msg_constant(self):
-        self.assertIn("보호", PASS_MSG)
+        self.assertIn("위험도", PASS_MSG)
 
 
 class AIFailSafeTests(HardeningTestBase):
@@ -228,14 +230,16 @@ class AIFailSafeTests(HardeningTestBase):
             r = ai.analyze(["P"] * 10, bigroad=[])
         self.assertIn("reason", r)
 
-    def test_cold_start_passes(self):
+    def test_cold_start_still_predicts(self):
         kwargs = _build_inputs(["P", "B"] * 4)
         r = RoadmapAI(db=self.db).analyze(**kwargs, db=self.db)
-        self.assertEqual(r.get("prediction"), "PASS")
+        self.assertIn(r.get("prediction"), ("P", "B"))
+        self.assertTrue(r.get("low_confidence") or r.get("pass_flag"))
         reasons = r.get("reason_in_korean") or r.get("reason") or []
         self.assertTrue(
             any(INSUFFICIENT_MSG in str(x) for x in reasons)
             or INSUFFICIENT_MSG in (r.get("status") or "")
+            or r.get("low_confidence")
         )
 
 
@@ -367,7 +371,7 @@ class ProtectionIntegrationTests(HardeningTestBase):
         r = RoadmapAI(db=self.db).analyze(
             **kwargs, db=self.db, protection_mode_enabled=False,
         )
-        self.assertIn(r.get("prediction"), ("P", "B", "PASS"))
+        self.assertIn(r.get("prediction"), ("P", "B"))
 
 
 if __name__ == "__main__":

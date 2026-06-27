@@ -35,19 +35,15 @@ def grade_prediction(
     confidence: float,
     risk_level: str,
     road_agreement: float,
-    is_pass: bool,
+    is_low_confidence: bool = False,
 ) -> str:
-    if is_pass:
-        return "PASS"
-    if risk_level in ("HIGH", "EXTREME"):
-        return "PASS"
+    if is_low_confidence or risk_level in ("HIGH", "EXTREME"):
+        return "C"
     if confidence >= 0.82 and road_agreement >= 75 and risk_level == "LOW":
         return "A"
     if confidence >= 0.68 and road_agreement >= 60:
         return "B"
-    if confidence >= 0.50:
-        return "C"
-    return "PASS"
+    return "C"
 
 
 def smooth_probabilities(p: float, b: float, alpha: float = 0.15) -> Dict[str, float]:
@@ -90,8 +86,9 @@ def safe_ai_result(**overrides) -> Dict[str, Any]:
         "pattern_similarity": {},
         "data_counts": {},
         "v6_dashboard": {},
-        "quality_grade": "PASS",
-        "pass_flag": True,
+        "quality_grade": "C",
+        "low_confidence": True,
+        "pass_flag": False,
         "risk_level": "LOW",
         "road_agreement": 0.0,
         "protection_mode": {},
