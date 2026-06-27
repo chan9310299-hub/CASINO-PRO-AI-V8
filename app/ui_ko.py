@@ -1,14 +1,13 @@
-"""Korean UI labels — CASINO PRO AI v9.1 모바일 프로."""
+"""Korean UI labels — CASINO PRO AI v9.2 모바일 간소화."""
 
 from typing import Any, Dict, Optional
 
 APP_DISPLAY_NAME = "CASINO PRO AI v9 모바일 프로"
-VERSION_DISPLAY = "v9.1 모바일 프로"
+VERSION_DISPLAY = "v9.2 모바일 간소화"
 SUBTITLE = "바카라 로드 분석 대시보드"
 
 SIX_GRID_TITLE = "6매 GRID"
 BIG_ROAD_TITLE = "빅 로드"
-DERIVED_ROAD_TITLES = ("👁 빅아이", "🔹 스몰", "🪳 바퀴벌레")
 
 MOBILE_LAYOUT_ORDER = (
     "header",
@@ -18,10 +17,10 @@ MOBILE_LAYOUT_ORDER = (
     "protection_mode",
     "six_grid",
     "big_road",
-    "derived_roads",
     "performance",
     "learning",
     "backup_export",
+    "advanced_settings",
 )
 
 BTN_PLAYER = "🔵 플레이어"
@@ -82,8 +81,6 @@ FORBIDDEN_MAIN_UI_ENGLISH = (
     "Backup / Export / Import",
     "Advanced settings",
     "Big Road",
-    "BigEye",
-    "Cockroach",
     "neutral",
     "Medium",
     "High",

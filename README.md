@@ -1,4 +1,4 @@
-# CASINO PRO AI v9.1 모바일 프로
+# CASINO PRO AI v9.2 모바일 간소화
 
 Baccarat road analysis and AI record-keeping dashboard. Statistical analysis only — not betting advice.
 

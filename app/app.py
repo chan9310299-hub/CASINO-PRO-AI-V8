@@ -26,7 +26,6 @@ from ui_ko import (
     BTN_RESET,
     BTN_TIE,
     BTN_UNDO,
-    DERIVED_ROAD_TITLES,
     EXP_ADVANCED,
     EXP_BACKUP,
     EXP_PATTERN,
@@ -288,41 +287,28 @@ header[data-testid="stHeader"] { background: transparent; }
     background: rgba(30, 20, 20, 0.55); border: 1px solid rgba(255, 120, 80, 0.25);
     color: #f0a898; font-size: 0.7rem; text-align: center;
 }
-.derived-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem; margin-bottom: 0.6rem; }
-.derived-card {
-    background: rgba(12, 20, 36, 0.85); border: 1px solid rgba(62, 140, 255, 0.15);
-    border-radius: 10px; padding: 0.4rem 0.45rem; min-width: 0;
-}
-.derived-title {
-    font-size: 0.65rem; font-weight: 700; color: #7a8ba8;
-    margin-bottom: 0.3rem; text-transform: uppercase;
-}
-.road-scroll, .six-scroll, .mini-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; }
-.road-wrap, .six-wrap, .mini-wrap {
+.road-scroll, .six-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; }
+.road-wrap, .six-wrap {
     display: grid;
     grid-auto-flow: row;
     background: #111827; border: 1px solid rgba(62, 140, 255, 0.2);
     border-radius: 8px; padding: 2px; width: max-content; max-width: 100%;
 }
-.road-cell, .six-cell, .mini-cell {
+.road-cell, .six-cell {
     background: #0f172a; border: 1px solid #1e293b;
     display: flex; align-items: center; justify-content: center; position: relative;
     box-sizing: border-box;
 }
 .road-cell { width: 36px; height: 32px; }
 .six-cell { width: 36px; height: 32px; }
-.mini-cell { width: 22px; height: 20px; }
 .road-ball, .ball {
     width: 24px; height: 24px; border-radius: 50%; color: white;
     font-weight: 800; font-size: 10px;
     display: flex; align-items: center; justify-content: center;
 }
-.mini-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid; background: transparent; }
 .p { background: #2689e8; }
 .b { background: #d90018; }
 .t { background: #22c55e; }
-.red-dot { border-color: #ff4d6d; }
-.blue-dot { border-color: #38bdf8; }
 .empty { width: 24px; height: 24px; border-radius: 50%; background: #1e293b; }
 .tie-mark {
     position: absolute; right: 1px; bottom: 1px; background: #22c55e; color: white;
@@ -884,55 +870,6 @@ def render_bigroad(road_data):
     )
 
 
-def render_derived_row(bigeye_grid, smallroad_grid, cockroach_grid):
-    grids = [bigeye_grid, smallroad_grid, cockroach_grid]
-    cards = [
-        render_circle_road_html_only(grids[i], DERIVED_ROAD_TITLES[i])
-        for i in range(3)
-    ]
-    _md(f'<div class="derived-row">{"".join(cards)}</div>')
-
-
-def render_circle_road_html_only(data, title):
-    if not data:
-        grid = ""
-        cols = 6
-    elif isinstance(data[0], dict):
-        max_col = max(item["col"] for item in data)
-        cols = min(max(6, max_col + 1), 14)
-        cell_map = {(item["row"], item["col"]): item["mark"] for item in data}
-        cells = []
-        for row in range(6):
-            for col in range(cols):
-                mark = cell_map.get((row, col))
-                if mark:
-                    cls = "red-dot" if mark == "R" else "blue-dot"
-                    cells.append(f'<div class="mini-cell"><div class="mini-dot {cls}"></div></div>')
-                else:
-                    cells.append('<div class="mini-cell"></div>')
-        grid = "".join(cells)
-    else:
-        cols = min(max(6, math.ceil(len(data) / 6)), 14)
-        cells = []
-        for row in range(6):
-            for col in range(cols):
-                idx = col * 6 + row
-                if idx < len(data):
-                    mark = data[idx]
-                    cls = "red-dot" if mark == "R" else "blue-dot"
-                    cells.append(f'<div class="mini-cell"><div class="mini-dot {cls}"></div></div>')
-                else:
-                    cells.append('<div class="mini-cell"></div>')
-        grid = "".join(cells)
-
-    return (
-        f'<div class="derived-card"><div class="derived-title">{html.escape(title)}</div>'
-        f'<div class="mini-scroll"><div class="mini-wrap" '
-        f'style="grid-template-columns:repeat({cols},22px);grid-template-rows:repeat(6,20px);">'
-        f'{grid}</div></div></div>'
-    )
-
-
 def calculate_stats(history):
     current_win = 0
     current_lose = 0
@@ -1080,10 +1017,6 @@ road_engine = BigRoadEngine()
 road_engine.load(history)
 bigroad = road_engine.build()
 
-bigeye_engine = BigEyeRoad(history=history)
-smallroad_engine = SmallRoad(history=history)
-cockroach_engine = CockroachRoad(history=history)
-
 ai_result = run_ai_analysis(history, db, st.session_state.protection_mode_enabled)
 try:
     ensure_prediction_logged(db, history, ai_result)
@@ -1142,12 +1075,6 @@ render_protection_mode_card(
 render_six_grid(history)
 
 render_bigroad(bigroad)
-
-render_derived_row(
-    bigeye_engine.build_grid(),
-    smallroad_engine.build_grid(),
-    cockroach_engine.build_grid(),
-)
 
 html_block = render_perf_v7_html(perf_metrics)
 if html_block:

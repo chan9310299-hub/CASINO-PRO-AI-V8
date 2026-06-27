@@ -65,12 +65,11 @@ a[href*="github.com/streamlit"] { display: none !important; }
     }
     .perf-row { grid-template-columns: repeat(2, 1fr) !important; gap: 6px; }
     .perf-v7-row { grid-template-columns: repeat(2, 1fr) !important; }
-    .derived-row { grid-template-columns: 1fr !important; }
     .dash-card {
         padding: 0.6rem 0.65rem; margin-bottom: 0.35rem; width: 100%;
         box-sizing: border-box;
     }
-    .road-scroll, .six-scroll, .mini-scroll {
+    .road-scroll, .six-scroll {
         -webkit-overflow-scrolling: touch; scroll-behavior: smooth;
         max-width: 100%; overflow-x: auto; overflow-y: hidden;
     }

@@ -12,7 +12,7 @@ EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "casino_ai.db"
 
 APP_NAME = "CASINO PRO AI v9 모바일 프로"
-VERSION = "v9.1 모바일 프로"
+VERSION = "v9.2 모바일 간소화"
 APP_VERSION = VERSION
 
 PB_RESULTS = ("P", "B")
