@@ -614,7 +614,7 @@ def render_data_management(db, storage_status=None):
                 from cloud_migration import migrate_sqlite_to_postgres
                 from storage import get_storage_backend
 
-                sqlite_db = Database()
+                sqlite_db = Database(force_sqlite=True)
                 pg_backend = get_storage_backend(force_cloud=True)
                 result = migrate_sqlite_to_postgres(sqlite_db, pg_backend.db)
                 st.session_state.migration_result = result

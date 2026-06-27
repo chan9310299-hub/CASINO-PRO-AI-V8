@@ -18,44 +18,28 @@ except Exception:
     Database = None
 
 try:
-    from pg_database import PostgresDatabase, init_cloud_tables
+    from pg_database import init_cloud_tables
 except Exception:
-    PostgresDatabase = None
     init_cloud_tables = None
 
 _backend_instance = None
 
 
 class StorageBackend:
-    """Unified storage facade over SQLite or PostgreSQL."""
+    """Unified storage facade — Database auto-selects SQLite or PostgreSQL."""
 
-    def __init__(self, db=None, *, cloud: Optional[bool] = None):
+    def __init__(self, db=None, *, cloud: Optional[bool] = None, force_sqlite: bool = False):
         if db is not None:
             self._db = db
-            self._cloud = getattr(db, "backend", "") == "postgresql"
-        elif cloud is True and PostgresDatabase is not None:
-            url = db_config.get_database_url()
-            if not url:
-                raise RuntimeError("DATABASE_URL not configured")
-            self._db = PostgresDatabase(url)
-            self._cloud = True
-        elif cloud is False or not db_config.is_cloud_db_enabled():
-            if Database is None:
-                raise RuntimeError("Database unavailable")
-            self._db = Database()
-            self._cloud = False
+        elif Database is None:
+            raise RuntimeError("Database unavailable")
+        elif force_sqlite or cloud is False:
+            self._db = Database(force_sqlite=True)
         else:
-            try:
-                url = db_config.get_database_url()
-                if url and PostgresDatabase is not None:
-                    self._db = PostgresDatabase(url)
-                    self._cloud = True
-                else:
-                    self._db = Database()
-                    self._cloud = False
-            except Exception:
-                self._db = Database()
-                self._cloud = False
+            self._db = Database()
+        self._cloud = getattr(self._db, "is_postgres", False) or getattr(
+            self._db, "backend", ""
+        ) == "postgresql"
 
     @property
     def db(self):
@@ -180,14 +164,17 @@ class StorageBackend:
             pass
 
 
-def get_storage_backend(db=None, *, force_cloud: bool = False) -> StorageBackend:
+def get_storage_backend(db=None, *, force_cloud: bool = False, force_sqlite: bool = False) -> StorageBackend:
     global _backend_instance
     if db is not None:
         return StorageBackend(db)
-    if _backend_instance is not None and not force_cloud:
+    if _backend_instance is not None and not force_cloud and not force_sqlite:
         return _backend_instance
-    if force_cloud:
-        return StorageBackend(cloud=True)
+    if force_cloud and db_config.is_cloud_db_enabled():
+        _backend_instance = StorageBackend()
+        return _backend_instance
+    if force_sqlite:
+        return StorageBackend(force_sqlite=True)
     _backend_instance = StorageBackend()
     return _backend_instance
 
@@ -197,7 +184,6 @@ def get_database():
     return get_storage_backend().db
 
 
-# Backward-compatible aliases
 Storage = StorageBackend
 
 

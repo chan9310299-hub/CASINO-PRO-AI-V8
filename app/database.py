@@ -2,8 +2,17 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Sequence, Union
 
+import db_config
 from local_config import DB_PATH
+
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
 
 try:
     from backup_manager import backup_database, get_last_backup_time
@@ -29,6 +38,41 @@ except Exception:
 
     def run_migrations(conn, backup_fn=None):
         return {"version": 0, "migrated": False}
+
+
+def _adapt_sql(sql: str, backend: str) -> str:
+    if backend != "postgresql":
+        return sql
+    out = sql.replace("?", "%s")
+    out = out.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+    out = out.replace("AUTOINCREMENT", "")
+    out = out.replace("INSERT OR IGNORE", "INSERT")
+    out = out.replace("MAX(p_rate, b_rate)", "GREATEST(p_rate, b_rate)")
+    out = out.replace("MIN(1.0,", "LEAST(1.0,")
+    return out
+
+
+def _row_to_dict(row) -> Optional[Dict[str, Any]]:
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return dict(row)
+    try:
+        return dict(row)
+    except Exception:
+        return None
+
+
+def _scalar(row) -> Any:
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row[0]
+
+
+def _now_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 LEARNING_SIGNAL_DEFAULTS = {
     "recent_10": 0.45,
@@ -57,7 +101,23 @@ LEARNING_SIGNAL_DEFAULTS = {
 
 
 class Database:
-    def __init__(self):
+    backend = "sqlite"
+
+    def __init__(self, force_sqlite: bool = False):
+        self.database_url = None
+        url = None if force_sqlite else db_config.get_database_url()
+        if url and psycopg2 is not None:
+            try:
+                self.backend = "postgresql"
+                self.database_url = url
+                self.conn = psycopg2.connect(url, cursor_factory=RealDictCursor)
+                self.conn.autocommit = False
+                self._bootstrap_postgres()
+                return
+            except Exception:
+                self.backend = "sqlite"
+                self.database_url = None
+
         self.conn = sqlite3.connect(DB_PATH)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
@@ -79,6 +139,48 @@ class Database:
         except Exception:
             pass
 
+    @property
+    def is_postgres(self) -> bool:
+        return self.backend == "postgresql"
+
+    def execute(self, sql: str, params: Optional[Sequence] = None):
+        cur = self.conn.cursor()
+        cur.execute(_adapt_sql(sql, self.backend), tuple(params or ()))
+        return cur
+
+    def query(self, sql: str, params: Optional[Sequence] = None) -> List[Dict[str, Any]]:
+        cur = self.execute(sql, params)
+        return [_row_to_dict(r) for r in cur.fetchall() if _row_to_dict(r) is not None]
+
+    def query_one(self, sql: str, params: Optional[Sequence] = None) -> Optional[Dict[str, Any]]:
+        cur = self.execute(sql, params)
+        return _row_to_dict(cur.fetchone())
+
+    def _safe_rollback(self) -> None:
+        if not self.conn:
+            return
+        if getattr(self.conn, "closed", False):
+            return
+        try:
+            self.conn.rollback()
+        except Exception:
+            pass
+
+    def _bootstrap_postgres(self) -> None:
+        try:
+            from pg_database import init_cloud_tables
+            init_cloud_tables(self.conn)
+        except Exception:
+            self.init_db()
+        try:
+            self.ensure_v6_tables()
+        except Exception:
+            pass
+        try:
+            self.ensure_learning_tables()
+        except Exception:
+            pass
+
     def ensure_v5_tables(self, cur=None):
         """Backward-compatible V5 schema hook — no destructive changes."""
         if cur is not None:
@@ -92,8 +194,8 @@ class Database:
 
     def ensure_v6_tables(self, cur=None):
         cursor = cur if cur is not None else self.conn.cursor()
-
-        cursor.execute("""
+        ddl_list = [
+            """
             CREATE TABLE IF NOT EXISTS ai_v6_metrics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 hand_index INTEGER,
@@ -107,8 +209,8 @@ class Database:
                 losing_streak INTEGER DEFAULT 0,
                 prediction_quality TEXT
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS ai_backtest_v6 (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
@@ -120,8 +222,8 @@ class Database:
                 win_count INTEGER,
                 loss_count INTEGER
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS ai_optimizer_v6 (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 optimization_time TEXT NOT NULL,
@@ -131,8 +233,8 @@ class Database:
                 accuracy_after REAL,
                 resolved_count INTEGER
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS ai_backtest_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
@@ -147,8 +249,8 @@ class Database:
                 best_signal TEXT,
                 worst_signal TEXT
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS pattern_rank_cache (
                 pattern_key TEXT PRIMARY KEY,
                 pattern_length INTEGER,
@@ -160,8 +262,8 @@ class Database:
                 confidence REAL DEFAULT 0,
                 last_seen TEXT
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS ai_learning_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
@@ -170,8 +272,8 @@ class Database:
                 worst_signal TEXT,
                 avg_confidence REAL
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS ai_weight_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 optimization_time TEXT NOT NULL,
@@ -181,8 +283,8 @@ class Database:
                 accuracy_after REAL,
                 resolved_count INTEGER DEFAULT 0
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS pattern_ranking (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 pattern TEXT,
@@ -193,15 +295,15 @@ class Database:
                 confidence REAL DEFAULT 0,
                 last_seen TEXT DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS v6_statistics (
                 key TEXT PRIMARY KEY,
                 value TEXT,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS anti_streak_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -210,8 +312,8 @@ class Database:
                 action TEXT,
                 reason TEXT
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS prediction_quality (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -221,8 +323,8 @@ class Database:
                 risk_level TEXT,
                 pass_flag INTEGER DEFAULT 0
             )
-        """)
-        cursor.execute("""
+            """,
+            """
             CREATE TABLE IF NOT EXISTS confidence_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -230,13 +332,29 @@ class Database:
                 calibrated_confidence REAL DEFAULT 0,
                 reason TEXT
             )
-        """)
+            """,
+        ]
+        for ddl in ddl_list:
+            cursor.execute(_adapt_sql(ddl, self.backend))
 
-        if cur is None:
+        if cur is None and not self.is_postgres:
             self.conn.commit()
 
     def get_last_save_time(self) -> str:
         try:
+            row = self.query_one(
+                """
+                SELECT MAX(ts) AS last_ts FROM (
+                    SELECT MAX(created_at) AS ts FROM results
+                    UNION ALL
+                    SELECT MAX(created_at) FROM ai_prediction_history
+                    UNION ALL
+                    SELECT MAX(updated_at) FROM ai_pattern_memory
+                ) AS t
+                """
+            )
+            if row:
+                return row.get("last_ts") or "—"
             with self._connection() as conn:
                 cur = conn.cursor()
                 cur.execute(
@@ -250,23 +368,41 @@ class Database:
                     )
                     """
                 )
-                row = cur.fetchone()
-                return (row[0] if row else None) or "—"
+                return _scalar(cur.fetchone()) or "—"
         except Exception:
             return "—"
 
     def get_db_status(self):
         try:
-            status = get_migration_status(self.conn)
-            status["last_backup"] = get_last_backup_time() or "—"
-            status["storage_mode"] = "local"
-            status["cloud_connected"] = False
+            if self.is_postgres:
+                status = {
+                    "version": 12,
+                    "target_version": 12,
+                    "tables_ok": True,
+                    "missing_tables": [],
+                    "total_stored_rows": 0,
+                    "status": "클라우드 연결됨",
+                    "last_backup": "—",
+                    "storage_mode": "cloud",
+                    "cloud_connected": True,
+                }
+            else:
+                status = get_migration_status(self.conn)
+                status["last_backup"] = get_last_backup_time() or "—"
+                status["storage_mode"] = "local"
+                status["cloud_connected"] = False
             status["last_save_time"] = self.get_last_save_time()
             try:
                 status["total_input_hands"] = len(self.get_results() or [])
                 stats = self.get_learning_stats()
                 status["total_ai_predictions"] = stats.get("total_predictions", 0)
                 status["pattern_memory_count"] = self.get_pattern_memory_count()
+                status["total_stored_rows"] = (
+                    status.get("total_stored_rows", 0)
+                    or status["total_input_hands"]
+                    + status["total_ai_predictions"]
+                    + status["pattern_memory_count"]
+                )
             except Exception:
                 pass
             return status
@@ -279,8 +415,8 @@ class Database:
                 "total_stored_rows": 0,
                 "status": "OK",
                 "last_backup": "—",
-                "storage_mode": "local",
-                "cloud_connected": False,
+                "storage_mode": "cloud" if self.is_postgres else "local",
+                "cloud_connected": self.is_postgres,
                 "last_save_time": "—",
             }
 
@@ -288,12 +424,19 @@ class Database:
     def _connection(self):
         try:
             yield self.conn
-            self.conn.commit()
+            if self.conn and not getattr(self.conn, "closed", False):
+                self.conn.commit()
         except Exception:
-            self.conn.rollback()
+            self._safe_rollback()
             raise
 
     def connect(self):
+        if self.is_postgres:
+            if psycopg2 is None:
+                raise RuntimeError("psycopg2 required")
+            conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+            conn.autocommit = False
+            return conn
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         return conn
@@ -306,14 +449,14 @@ class Database:
     def init_db(self):
         with self._connection() as conn:
             cur = conn.cursor()
-            cur.execute("""
+            cur.execute(_adapt_sql("""
             CREATE TABLE IF NOT EXISTS results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 result TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
-            """)
-            cur.execute("""
+            """, self.backend))
+            cur.execute(_adapt_sql("""
             CREATE TABLE IF NOT EXISTS ai_prediction_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
@@ -327,91 +470,99 @@ class Database:
                 actual_result TEXT,
                 is_correct INTEGER
             )
-            """)
+            """, self.backend))
+            if self.is_postgres:
+                cur.execute(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_pred_hand_unique
+                    ON ai_prediction_history (hand_index)
+                    """
+                )
             self.ensure_adaptive_learning_tables(cur)
 
     def insert_v6_metrics(self, hand_index, metrics: dict):
         self.ensure_v6_tables()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cur = self.conn.cursor()
-        cur.execute("""
+        self.execute(
+            """
             INSERT INTO ai_v6_metrics (
                 hand_index, created_at, risk_score, risk_level, road_agreement,
                 pattern_similarity, meta_score, pass_flag, losing_streak, prediction_quality
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            hand_index,
-            now,
-            metrics.get("risk_score"),
-            metrics.get("risk_level"),
-            metrics.get("road_agreement"),
-            metrics.get("pattern_similarity"),
-            metrics.get("meta_score"),
-            1 if metrics.get("pass_flag") else 0,
-            metrics.get("losing_streak", 0),
-            metrics.get("prediction_quality"),
-        ))
+            """,
+            (
+                hand_index,
+                _now_str(),
+                metrics.get("risk_score"),
+                metrics.get("risk_level"),
+                metrics.get("road_agreement"),
+                metrics.get("pattern_similarity"),
+                metrics.get("meta_score"),
+                1 if metrics.get("pass_flag") else 0,
+                metrics.get("losing_streak", 0),
+                metrics.get("prediction_quality"),
+            ),
+        )
         self.conn.commit()
 
     def save_backtest_v6(self, window_size, result: dict):
         self.ensure_v6_tables()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cur = self.conn.cursor()
-        cur.execute("""
+        self.execute(
+            """
             INSERT INTO ai_backtest_v6 (
                 created_at, window_size, accuracy, avg_losing_streak,
                 max_losing_streak, pass_rate, win_count, loss_count
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            now, window_size, result.get("accuracy"), result.get("average_losing_streak"),
-            result.get("maximum_losing_streak"), result.get("pass_rate"),
-            result.get("win_count"), result.get("loss_count"),
-        ))
+            """,
+            (
+                _now_str(), window_size, result.get("accuracy"),
+                result.get("average_losing_streak"), result.get("maximum_losing_streak"),
+                result.get("pass_rate"), result.get("win_count"), result.get("loss_count"),
+            ),
+        )
         self.conn.commit()
 
     def save_optimizer_v6(self, result: dict, resolved_count: int):
         self.ensure_v6_tables()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cur = self.conn.cursor()
-        cur.execute("""
+        self.execute(
+            """
             INSERT INTO ai_optimizer_v6 (
                 optimization_time, old_weights_json, new_weights_json,
                 accuracy_before, accuracy_after, resolved_count
             ) VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            now,
-            json.dumps(result.get("old_weights", {}), ensure_ascii=False),
-            json.dumps(result.get("new_weights", {}), ensure_ascii=False),
-            result.get("accuracy_before"),
-            result.get("accuracy_after"),
-            resolved_count,
-        ))
+            """,
+            (
+                _now_str(),
+                json.dumps(result.get("old_weights", {}), ensure_ascii=False),
+                json.dumps(result.get("new_weights", {}), ensure_ascii=False),
+                result.get("accuracy_before"),
+                result.get("accuracy_after"),
+                resolved_count,
+            ),
+        )
         self.conn.commit()
 
     def count_optimizer_v6_runs(self):
         self.ensure_v6_tables()
-        cur = self.conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM ai_optimizer_v6")
-        return cur.fetchone()[0]
+        row = self.query_one("SELECT COUNT(*) AS c FROM ai_optimizer_v6")
+        return int((row or {}).get("c") or 0)
 
     def get_last_optimizer_resolved_count(self):
         self.ensure_v6_tables()
-        cur = self.conn.cursor()
-        cur.execute(
+        row = self.query_one(
             "SELECT resolved_count FROM ai_optimizer_v6 ORDER BY id DESC LIMIT 1"
         )
-        row = cur.fetchone()
-        return row[0] if row else 0
+        return int((row or {}).get("resolved_count") or 0)
 
     def get_v6_pass_rate(self):
         self.ensure_v6_tables()
-        cur = self.conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM ai_v6_metrics")
-        total = cur.fetchone()[0]
+        row = self.query_one("SELECT COUNT(*) AS c FROM ai_v6_metrics")
+        total = int((row or {}).get("c") or 0)
         if total == 0:
             return 0.0
-        cur.execute("SELECT COUNT(*) FROM ai_v6_metrics WHERE pass_flag = 1")
-        passes = cur.fetchone()[0]
+        row2 = self.query_one(
+            "SELECT COUNT(*) AS c FROM ai_v6_metrics WHERE pass_flag = 1"
+        )
+        passes = int((row2 or {}).get("c") or 0)
         return round(passes / total * 100.0, 2)
 
     def ensure_adaptive_learning_tables(self, cur=None):
@@ -427,7 +578,7 @@ class Database:
             self.initialize_default_signal_weights(cur=cur)
 
     def _create_adaptive_learning_tables(self, cur):
-        cur.execute("""
+        cur.execute(_adapt_sql("""
         CREATE TABLE IF NOT EXISTS ai_signal_weights (
             signal_name TEXT PRIMARY KEY,
             weight REAL NOT NULL,
@@ -437,8 +588,8 @@ class Database:
             accuracy REAL DEFAULT 0,
             updated_at TEXT
         )
-        """)
-        cur.execute("""
+        """, self.backend))
+        cur.execute(_adapt_sql("""
         CREATE TABLE IF NOT EXISTS ai_pattern_memory (
             pattern_key TEXT PRIMARY KEY,
             pattern_length INTEGER,
@@ -449,18 +600,32 @@ class Database:
             b_rate REAL DEFAULT 0,
             updated_at TEXT
         )
-        """)
+        """, self.backend))
 
     def initialize_default_signal_weights(self, cur=None):
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = _now_str()
 
         def _insert_defaults(cursor):
             for name, weight in LEARNING_SIGNAL_DEFAULTS.items():
-                cursor.execute("""
-                    INSERT OR IGNORE INTO ai_signal_weights (
-                        signal_name, weight, total, correct, wrong, accuracy, updated_at
-                    ) VALUES (?, ?, 0, 0, 0, 0, ?)
-                """, (name, weight, now))
+                if self.is_postgres:
+                    cursor.execute(
+                        """
+                        INSERT INTO ai_signal_weights (
+                            signal_name, weight, total, correct, wrong, accuracy, updated_at
+                        ) VALUES (%s, %s, 0, 0, 0, 0, %s)
+                        ON CONFLICT (signal_name) DO NOTHING
+                        """,
+                        (name, weight, now),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT OR IGNORE INTO ai_signal_weights (
+                            signal_name, weight, total, correct, wrong, accuracy, updated_at
+                        ) VALUES (?, ?, 0, 0, 0, 0, ?)
+                        """,
+                        (name, weight, now),
+                    )
 
         if cur is not None:
             _insert_defaults(cur)
@@ -470,20 +635,17 @@ class Database:
 
     def get_all_signal_weights(self):
         self.ensure_adaptive_learning_tables()
-        cur = self.conn.cursor()
-        cur.execute("SELECT signal_name, weight FROM ai_signal_weights")
-        rows = cur.fetchall()
-        return {row["signal_name"]: row["weight"] for row in rows}
+        return {
+            row["signal_name"]: row["weight"]
+            for row in self.query("SELECT signal_name, weight FROM ai_signal_weights")
+        }
 
     def get_signal_weight(self, signal_name):
         self.ensure_adaptive_learning_tables()
-        cur = self.conn.cursor()
-        cur.execute(
+        return self.query_one(
             "SELECT * FROM ai_signal_weights WHERE signal_name = ?",
             (signal_name,),
         )
-        row = cur.fetchone()
-        return dict(row) if row else None
 
     def update_signal_weight(
         self,
@@ -506,18 +668,20 @@ class Database:
         new_correct = correct if correct is not None else row["correct"]
         new_wrong = wrong if wrong is not None else row["wrong"]
         new_accuracy = accuracy if accuracy is not None else row["accuracy"]
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = _now_str()
 
-        cur = self.conn.cursor()
-        cur.execute("""
+        self.execute(
+            """
             UPDATE ai_signal_weights
             SET weight = ?, total = ?, correct = ?, wrong = ?,
                 accuracy = ?, updated_at = ?
             WHERE signal_name = ?
-        """, (
-            new_weight, new_total, new_correct, new_wrong,
-            new_accuracy, now, signal_name,
-        ))
+            """,
+            (
+                new_weight, new_total, new_correct, new_wrong,
+                new_accuracy, now, signal_name,
+            ),
+        )
         self.conn.commit()
 
     def update_signal_performance(self, signal_name, is_correct):
@@ -541,23 +705,15 @@ class Database:
 
     def lookup_pattern_memory(self, pattern_key):
         self.ensure_adaptive_learning_tables()
-        cur = self.conn.cursor()
-        cur.execute(
+        return self.query_one(
             "SELECT * FROM ai_pattern_memory WHERE pattern_key = ?",
             (pattern_key,),
         )
-        row = cur.fetchone()
-        return dict(row) if row else None
 
     def upsert_pattern_memory(self, pattern_key, pattern_length, next_result):
         self.ensure_adaptive_learning_tables()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cur = self.conn.cursor()
-        cur.execute(
-            "SELECT * FROM ai_pattern_memory WHERE pattern_key = ?",
-            (pattern_key,),
-        )
-        row = cur.fetchone()
+        now = _now_str()
+        row = self.lookup_pattern_memory(pattern_key)
         if row is None:
             next_p = 1 if next_result == "P" else 0
             next_b = 1 if next_result == "B" else 0
@@ -570,7 +726,8 @@ class Database:
         p_rate = round(next_p / total, 4) if total else 0.0
         b_rate = round(next_b / total, 4) if total else 0.0
 
-        cur.execute("""
+        self.execute(
+            """
             INSERT INTO ai_pattern_memory (
                 pattern_key, pattern_length, next_p, next_b, total,
                 p_rate, b_rate, updated_at
@@ -582,26 +739,25 @@ class Database:
                 p_rate = excluded.p_rate,
                 b_rate = excluded.b_rate,
                 updated_at = excluded.updated_at
-        """, (
-            pattern_key, pattern_length, next_p, next_b, total,
-            p_rate, b_rate, now,
-        ))
+            """,
+            (
+                pattern_key, pattern_length, next_p, next_b, total,
+                p_rate, b_rate, now,
+            ),
+        )
         self.conn.commit()
 
     def get_pattern_memory_by_length(self, pattern_length):
         self.ensure_adaptive_learning_tables()
-        cur = self.conn.cursor()
-        cur.execute(
+        return self.query(
             "SELECT * FROM ai_pattern_memory WHERE pattern_length = ?",
             (pattern_length,),
         )
-        return [dict(row) for row in cur.fetchall()]
 
     def get_pattern_memory_count(self):
         self.ensure_adaptive_learning_tables()
-        cur = self.conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM ai_pattern_memory")
-        return cur.fetchone()[0]
+        row = self.query_one("SELECT COUNT(*) AS c FROM ai_pattern_memory")
+        return int((row or {}).get("c") or 0)
 
     def reset_ai_learning(self):
         backup_database("pre_learning_reset")
@@ -668,50 +824,51 @@ class Database:
         return [dict(row) for row in cur.fetchall()]
 
     def add_result(self, result):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "INSERT INTO results (result, created_at) VALUES (?, ?)",
-                (result, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-            )
+        self.execute(
+            "INSERT INTO results (result, created_at) VALUES (?, ?)",
+            (result, _now_str()),
+        )
+        if not self.is_postgres:
+            self.conn.commit()
+        else:
+            self.conn.commit()
 
     def get_results(self):
         try:
-            with self._connection() as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT result FROM results ORDER BY id ASC")
-                rows = cur.fetchall()
-                return [r[0] if r[0] in ("P", "B", "T") else "T" for r in rows]
-        except sqlite3.Error:
+            rows = self.query("SELECT result FROM results ORDER BY id ASC")
+            out = []
+            for r in rows:
+                val = r.get("result")
+                out.append(val if val in ("P", "B", "T") else "T")
+            return out
+        except Exception:
             return []
 
     def undo_last(self):
         with self._connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM results")
-            count_before = cur.fetchone()[0]
-            cur.execute("DELETE FROM results WHERE id = (SELECT MAX(id) FROM results)")
+            cur.execute(_adapt_sql("SELECT COUNT(*) FROM results", self.backend))
+            count_before = _scalar(cur.fetchone()) or 0
             cur.execute(
-                "DELETE FROM ai_prediction_history WHERE hand_index > ?",
+                _adapt_sql(
+                    "DELETE FROM results WHERE id = (SELECT MAX(id) FROM results)",
+                    self.backend,
+                )
+            )
+            cur.execute(
+                _adapt_sql(
+                    "DELETE FROM ai_prediction_history WHERE hand_index > ?",
+                    self.backend,
+                ),
                 (count_before - 1,),
             )
 
     def reset_current(self):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute("DELETE FROM results")
-            cur.execute("DELETE FROM ai_prediction_history")
+        self.execute("DELETE FROM results")
+        self.execute("DELETE FROM ai_prediction_history")
+        self.conn.commit()
 
     # --- AI prediction history (required API) ---
-
-    def has_prediction_for_hand(self, hand_index):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT 1 FROM ai_prediction_history WHERE hand_index = ? LIMIT 1",
-                (hand_index,),
-            )
-            return cur.fetchone() is not None
 
     def insert_prediction_history(
         self,
@@ -734,52 +891,65 @@ class Database:
 
         with self._connection() as conn:
             cur = conn.cursor()
-            cur.execute("""
+            if self.is_postgres:
+                cur.execute(
+                    """
+                    INSERT INTO ai_prediction_history (
+                        created_at, hand_index, history_snapshot, prediction, confidence,
+                        weighted_score, signal_breakdown_json, reason_json,
+                        actual_result, is_correct
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL)
+                    RETURNING id
+                    """,
+                    (
+                        _now_str(), hand_index, history_snapshot, prediction, confidence,
+                        weighted_score, signal_breakdown_json, reason_json,
+                    ),
+                )
+                row = cur.fetchone()
+                return _scalar(row)
+            cur.execute(
+                """
                 INSERT INTO ai_prediction_history (
-                    created_at,
-                    hand_index,
-                    history_snapshot,
-                    prediction,
-                    confidence,
-                    weighted_score,
-                    signal_breakdown_json,
-                    reason_json,
-                    actual_result,
-                    is_correct
+                    created_at, hand_index, history_snapshot, prediction, confidence,
+                    weighted_score, signal_breakdown_json, reason_json,
+                    actual_result, is_correct
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
-            """, (
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                hand_index,
-                history_snapshot,
-                prediction,
-                confidence,
-                weighted_score,
-                signal_breakdown_json,
-                reason_json,
-            ))
+                """,
+                (
+                    _now_str(), hand_index, history_snapshot, prediction, confidence,
+                    weighted_score, signal_breakdown_json, reason_json,
+                ),
+            )
             return cur.lastrowid
 
-    def update_prediction_actual(self, hand_index, actual_result, is_correct):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                UPDATE ai_prediction_history
-                SET actual_result = ?, is_correct = ?
-                WHERE hand_index = ? AND actual_result IS NULL
-            """, (actual_result, is_correct, hand_index))
-            return cur.rowcount
-
     def get_unresolved_prediction(self):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT * FROM ai_prediction_history
-                WHERE actual_result IS NULL
-                ORDER BY id DESC
-                LIMIT 1
-            """)
-            row = cur.fetchone()
-            return dict(row) if row else None
+        return self.query_one("""
+            SELECT * FROM ai_prediction_history
+            WHERE actual_result IS NULL
+            ORDER BY id DESC
+            LIMIT 1
+        """)
+
+    def update_prediction_actual(self, hand_index, actual_result, is_correct):
+        cur = self.execute(
+            """
+            UPDATE ai_prediction_history
+            SET actual_result = ?, is_correct = ?
+            WHERE hand_index = ? AND actual_result IS NULL
+            """,
+            (actual_result, is_correct, hand_index),
+        )
+        if self.is_postgres:
+            self.conn.commit()
+        return cur.rowcount
+
+    def has_prediction_for_hand(self, hand_index):
+        row = self.query_one(
+            "SELECT 1 AS ok FROM ai_prediction_history WHERE hand_index = ? LIMIT 1",
+            (hand_index,),
+        )
+        return row is not None
 
     def get_learning_stats(self):
         all_rows = self.get_all_predictions()
@@ -866,36 +1036,24 @@ class Database:
         return pending["id"] if updated else None
 
     def get_all_predictions(self):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT * FROM ai_prediction_history ORDER BY id ASC"
-            )
-            return [dict(row) for row in cur.fetchall()]
+        return self.query("SELECT * FROM ai_prediction_history ORDER BY id ASC")
 
     def get_resolved_predictions_pb(self):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT * FROM ai_prediction_history
-                WHERE actual_result IN ('P', 'B')
-                ORDER BY id ASC
-            """)
-            return [dict(row) for row in cur.fetchall()]
+        return self.query("""
+            SELECT * FROM ai_prediction_history
+            WHERE actual_result IN ('P', 'B')
+            ORDER BY id ASC
+        """)
 
     def count_pending_predictions(self):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT COUNT(*) FROM ai_prediction_history WHERE actual_result IS NULL"
-            )
-            return cur.fetchone()[0]
+        row = self.query_one(
+            "SELECT COUNT(*) AS c FROM ai_prediction_history WHERE actual_result IS NULL"
+        )
+        return int((row or {}).get("c") or 0)
 
     def count_all_predictions(self):
-        with self._connection() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM ai_prediction_history")
-            return cur.fetchone()[0]
+        row = self.query_one("SELECT COUNT(*) AS c FROM ai_prediction_history")
+        return int((row or {}).get("c") or 0)
 
     # Backward-compatible aliases
     def record_signal_outcome(self, signal_name, was_correct):
@@ -911,10 +1069,10 @@ class Database:
         return self.get_pattern_memory_count()
 
 
-def create_database():
-    """Return cloud PostgreSQL or local SQLite database."""
-    try:
-        from storage import get_database
-        return get_database()
-    except Exception:
-        return Database()
+def create_database(force_sqlite: bool = False):
+    """Return PostgreSQL (if DATABASE_URL set) or local SQLite database."""
+    return Database(force_sqlite=force_sqlite)
+
+
+def get_database(force_sqlite: bool = False):
+    return create_database(force_sqlite=force_sqlite)

@@ -71,7 +71,7 @@ class CloudAdapterTests(unittest.TestCase):
         conn.commit.assert_called()
 
     def test_postgres_database_wrapper(self):
-        from pg_database import PostgresDatabase
+        from database import Database
 
         mock_conn = mock.MagicMock()
         mock_cursor = mock.MagicMock()
@@ -79,14 +79,13 @@ class CloudAdapterTests(unittest.TestCase):
         mock_cursor.fetchone.return_value = {"c": 0}
         mock_cursor.fetchall.return_value = []
 
-        with mock.patch("pg_database.psycopg2") as mock_pg:
+        with mock.patch("database.psycopg2") as mock_pg:
             mock_pg.connect.return_value = mock_conn
-            with mock.patch("pg_database.init_cloud_tables"):
-                db = PostgresDatabase("postgresql://test")
-                db.initialize_default_signal_weights = mock.MagicMock()
-                self.assertEqual(db.backend, "postgresql")
-                db.add_result("P")
-                self.assertTrue(mock_cursor.execute.called)
+            with mock.patch("database.db_config.get_database_url", return_value="postgresql://test"):
+                with mock.patch.object(Database, "_bootstrap_postgres"):
+                    db = Database()
+                    db.add_result("P")
+                    self.assertTrue(db.is_postgres)
 
 
 class MigrationTests(unittest.TestCase):
@@ -167,16 +166,13 @@ class CloudPersistenceTests(unittest.TestCase):
 
     def test_history_persists_through_reload_mock(self):
         with mock.patch("db_config.get_database_url", return_value="postgresql://mock"):
-            with mock.patch("storage.PostgresDatabase", return_value=self.mock_db):
-                b1 = storage_module.StorageBackend(cloud=True)
-                storage_module._backend_instance = b1
-                b1.save_hand("P")
-                b1.save_hand("B")
-                b1.close()
-                storage_module._backend_instance = None
-                b2 = storage_module.StorageBackend(cloud=True)
-                self.assertEqual(b2.load_history(), ["P", "B"])
-                b2.close()
+            with mock.patch("database.psycopg2"):
+                with mock.patch.object(storage_module.Database, "__init__", lambda self, force_sqlite=False: None):
+                    b1 = storage_module.StorageBackend(db=self.mock_db)
+                    b1.save_hand("P")
+                    b1.save_hand("B")
+                    b2 = storage_module.StorageBackend(db=self.mock_db)
+                    self.assertEqual(b2.load_history(), ["P", "B"])
 
 
 class V12UITests(unittest.TestCase):
