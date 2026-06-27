@@ -40,9 +40,20 @@ def render_cloud_storage_banner(
 def render_v12_db_status_card(status: Dict[str, Any]) -> str:
     status = status or {}
     connection_error = status.get("connection_error")
+    db_engine = status.get("db_engine") or ""
+    cloud_configured = status.get("cloud_configured") or db_engine == "PostgreSQL"
     cloud = status.get("cloud_connected") or status.get("storage_mode") == "cloud"
-    if connection_error:
+    if connection_error and cloud_configured:
+        mode = "PostgreSQL — 연결 실패"
+        cloud_label = "연결 안 됨"
+    elif connection_error:
         mode = "클라우드 DB 연결 실패"
+        cloud_label = "연결 안 됨"
+    elif cloud_configured and cloud:
+        mode = "PostgreSQL — 클라우드 DB 연결됨"
+        cloud_label = "연결됨"
+    elif cloud_configured:
+        mode = "PostgreSQL (설정됨)"
         cloud_label = "연결 안 됨"
     elif cloud:
         mode = "클라우드 DB 연결됨"
@@ -51,6 +62,7 @@ def render_v12_db_status_card(status: Dict[str, Any]) -> str:
         mode = "로컬 SQLite 사용 중"
         cloud_label = "연결 안 됨"
     rows = [
+        ("DB 엔진", db_engine or ("PostgreSQL" if cloud_configured else "SQLite")),
         ("저장 방식", mode),
         ("클라우드 저장", cloud_label),
         ("누적 입력 판수", status.get("total_input_hands", 0)),

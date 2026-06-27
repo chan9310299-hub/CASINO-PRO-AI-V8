@@ -7,6 +7,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from db_config import CLOUD_DB_ERROR_MSG, DatabaseConnectionError, resolve_database_url
 from local_config import DB_PATH
 
+RUNTIME_DB_WARNING = (
+    "데이터베이스 처리 중 오류가 발생했습니다. "
+    "입력 화면은 계속 사용할 수 있으며, 잠시 후 다시 시도하세요."
+)
+
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -133,6 +138,7 @@ class Database:
 
     def __init__(self, force_sqlite: bool = False):
         self.connection_error: Optional[str] = None
+        self.runtime_error: Optional[str] = None
         self.conn = None
         self.database_url = None
         self._pg_driver: Optional[str] = None
@@ -191,22 +197,40 @@ class Database:
         return self.backend == "postgresql"
 
     def execute(self, sql: str, params: Optional[Sequence] = None):
-        self._require_conn()
-        cur = self.conn.cursor()
-        cur.execute(_adapt_sql(sql, self.backend), tuple(params or ()))
-        return cur
+        if not self._check_connected():
+            return None
+        try:
+            cur = self.conn.cursor()
+            cur.execute(_adapt_sql(sql, self.backend), tuple(params or ()))
+            return cur
+        except sqlite3.ProgrammingError:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return None
 
     def query(self, sql: str, params: Optional[Sequence] = None) -> List[Dict[str, Any]]:
         if not self._check_connected():
             return []
         cur = self.execute(sql, params)
+        if cur is None:
+            return []
         return [_row_to_dict(r) for r in cur.fetchall() if _row_to_dict(r) is not None]
 
     def query_one(self, sql: str, params: Optional[Sequence] = None) -> Optional[Dict[str, Any]]:
         if not self._check_connected():
             return None
         cur = self.execute(sql, params)
+        if cur is None:
+            return None
         return _row_to_dict(cur.fetchone())
+
+    def _set_runtime_error(self, _exc: Any = None) -> None:
+        self.runtime_error = RUNTIME_DB_WARNING
+
+    def consume_runtime_error(self) -> Optional[str]:
+        msg = self.runtime_error
+        self.runtime_error = None
+        return msg
 
     def _safe_rollback(self) -> None:
         if not self.conn:
@@ -234,7 +258,14 @@ class Database:
         try:
             yield self.conn
             if self.conn and not getattr(self.conn, "closed", False):
-                self.conn.commit()
+                try:
+                    self.conn.commit()
+                except sqlite3.ProgrammingError:
+                    self._safe_rollback()
+                    self._set_runtime_error()
+        except sqlite3.ProgrammingError:
+            self._safe_rollback()
+            self._set_runtime_error()
         except Exception:
             self._safe_rollback()
             raise
@@ -446,6 +477,7 @@ class Database:
             return "—"
 
     def get_db_status(self):
+        cloud_configured = bool(self.database_url)
         if self.connection_error:
             return {
                 "version": 12,
@@ -455,8 +487,10 @@ class Database:
                 "total_stored_rows": 0,
                 "status": self.connection_error,
                 "last_backup": "—",
-                "storage_mode": "cloud",
+                "storage_mode": "cloud" if cloud_configured else "local",
                 "cloud_connected": False,
+                "cloud_configured": cloud_configured,
+                "db_engine": "PostgreSQL" if cloud_configured else "SQLite",
                 "connection_error": self.connection_error,
                 "last_save_time": "—",
             }
@@ -468,16 +502,20 @@ class Database:
                     "tables_ok": True,
                     "missing_tables": [],
                     "total_stored_rows": 0,
-                    "status": "클라우드 DB 연결됨",
+                    "status": "PostgreSQL — 클라우드 DB 연결됨",
                     "last_backup": "—",
                     "storage_mode": "cloud",
                     "cloud_connected": True,
+                    "cloud_configured": True,
+                    "db_engine": "PostgreSQL",
                 }
             else:
                 status = get_migration_status(self.conn)
                 status["last_backup"] = get_last_backup_time() or "—"
                 status["storage_mode"] = "local"
                 status["cloud_connected"] = False
+                status["cloud_configured"] = cloud_configured
+                status["db_engine"] = "SQLite"
                 status["status"] = "로컬 SQLite 사용 중"
             status["last_save_time"] = self.get_last_save_time()
             try:
@@ -901,11 +939,20 @@ class Database:
     def add_result(self, result):
         if not self._check_connected():
             return
-        self.execute(
-            "INSERT INTO results (result, created_at) VALUES (?, ?)",
-            (result, _now_str()),
-        )
-        self.conn.commit()
+        try:
+            cur = self.execute(
+                "INSERT INTO results (result, created_at) VALUES (?, ?)",
+                (result, _now_str()),
+            )
+            if cur is None:
+                return
+            self.conn.commit()
+        except sqlite3.ProgrammingError:
+            self._safe_rollback()
+            self._set_runtime_error()
+        except Exception:
+            self._safe_rollback()
+            self._set_runtime_error()
 
     def record_hand(self, result):
         """Alias for add_result."""
@@ -923,16 +970,30 @@ class Database:
             return []
 
     def undo_last(self):
-        if not self._check_connected():
-            return
-        row = self.query_one("SELECT COUNT(*) AS c FROM results")
-        count_before = int((row or {}).get("c") or 0)
-        self.execute("DELETE FROM results WHERE id = (SELECT MAX(id) FROM results)")
-        self.execute(
-            "DELETE FROM ai_prediction_history WHERE hand_index > ?",
-            (count_before - 1,),
-        )
-        self.conn.commit()
+        try:
+            if not self._check_connected():
+                return False
+            row = self.query_one("SELECT COUNT(*) AS c FROM results")
+            count_before = int((row or {}).get("c") or 0)
+            if self.execute(
+                "DELETE FROM results WHERE id = (SELECT MAX(id) FROM results)"
+            ) is None:
+                return False
+            if self.execute(
+                "DELETE FROM ai_prediction_history WHERE hand_index > ?",
+                (count_before - 1,),
+            ) is None:
+                return False
+            self.conn.commit()
+            return True
+        except sqlite3.ProgrammingError:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return False
+        except Exception:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return False
 
     def reset_current(self):
         self.execute("DELETE FROM results")
@@ -1017,29 +1078,54 @@ class Database:
         )
 
     def get_unresolved_prediction(self):
-        return self.query_one("""
-            SELECT * FROM ai_prediction_history
-            WHERE actual_result IS NULL
-            ORDER BY id DESC
-            LIMIT 1
-        """)
+        try:
+            return self.query_one("""
+                SELECT * FROM ai_prediction_history
+                WHERE actual_result IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+            """)
+        except sqlite3.ProgrammingError:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return None
+        except Exception:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return None
 
     def get_unresolved_predictions(self):
-        row = self.get_unresolved_prediction()
-        return [row] if row else []
+        try:
+            row = self.get_unresolved_prediction()
+            return [row] if row else []
+        except Exception:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return []
 
     def update_prediction_actual(self, hand_index, actual_result, is_correct):
-        cur = self.execute(
-            """
-            UPDATE ai_prediction_history
-            SET actual_result = ?, is_correct = ?
-            WHERE hand_index = ? AND actual_result IS NULL
-            """,
-            (actual_result, is_correct, hand_index),
-        )
-        if self.is_postgres:
-            self.conn.commit()
-        return cur.rowcount
+        try:
+            cur = self.execute(
+                """
+                UPDATE ai_prediction_history
+                SET actual_result = ?, is_correct = ?
+                WHERE hand_index = ? AND actual_result IS NULL
+                """,
+                (actual_result, is_correct, hand_index),
+            )
+            if cur is None:
+                return 0
+            if self.is_postgres:
+                self.conn.commit()
+            return cur.rowcount
+        except sqlite3.ProgrammingError:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return 0
+        except Exception:
+            self._safe_rollback()
+            self._set_runtime_error()
+            return 0
 
     def has_prediction_for_hand(self, hand_index):
         row = self.query_one(

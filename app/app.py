@@ -358,6 +358,17 @@ def _md(content):
     st.markdown(content, unsafe_allow_html=True)
 
 
+def _show_db_runtime_warning(db) -> None:
+    """Show Korean DB warning instead of letting Streamlit render a traceback."""
+    if db is None:
+        return
+    msg = getattr(db, "consume_runtime_error", lambda: None)()
+    if msg:
+        st.warning(msg)
+    elif getattr(db, "connection_error", None):
+        st.warning(db.connection_error)
+
+
 def render_history_chips(history, limit=24):
     recent = history[-limit:] if history else []
     chips = "".join(
@@ -380,26 +391,48 @@ def render_input_buttons(db):
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         if st.button(f"🔵 {BTN_PLAYER}", use_container_width=True, key="btn_p"):
-            process_new_hand(db, "P", lambda h: run_ai_analysis(
-                h, db, st.session_state.protection_mode_enabled))
+            try:
+                process_new_hand(db, "P", lambda h: run_ai_analysis(
+                    h, db, st.session_state.protection_mode_enabled))
+            except Exception:
+                _show_db_runtime_warning(db)
+                st.warning("플레이어 입력 저장 중 오류가 발생했습니다.")
             st.rerun()
     with c2:
         if st.button(f"🔴 {BTN_BANKER}", use_container_width=True, key="btn_b"):
-            process_new_hand(db, "B", lambda h: run_ai_analysis(
-                h, db, st.session_state.protection_mode_enabled))
+            try:
+                process_new_hand(db, "B", lambda h: run_ai_analysis(
+                    h, db, st.session_state.protection_mode_enabled))
+            except Exception:
+                _show_db_runtime_warning(db)
+                st.warning("뱅커 입력 저장 중 오류가 발생했습니다.")
             st.rerun()
     with c3:
         if st.button(f"🟢 {BTN_TIE}", use_container_width=True, key="btn_t"):
-            process_new_hand(db, "T", lambda h: run_ai_analysis(
-                h, db, st.session_state.protection_mode_enabled))
+            try:
+                process_new_hand(db, "T", lambda h: run_ai_analysis(
+                    h, db, st.session_state.protection_mode_enabled))
+            except Exception:
+                _show_db_runtime_warning(db)
+                st.warning("타이 입력 저장 중 오류가 발생했습니다.")
             st.rerun()
     with c4:
         if st.button(f"↩ {BTN_UNDO}", use_container_width=True, key="btn_undo"):
-            db.undo_last()
+            try:
+                if not db.undo_last():
+                    _show_db_runtime_warning(db)
+                    st.warning("되돌리기에 실패했습니다.")
+            except Exception:
+                _show_db_runtime_warning(db)
+                st.warning("되돌리기 중 데이터베이스 오류가 발생했습니다.")
             st.rerun()
     with c5:
         if st.button(f"🗑 {BTN_RESET}", use_container_width=True, key="btn_reset"):
-            db.reset_current()
+            try:
+                db.reset_current()
+            except Exception:
+                _show_db_runtime_warning(db)
+                st.warning("초기화 중 데이터베이스 오류가 발생했습니다.")
             st.rerun()
     _md(sticky_input_close())
 
@@ -996,6 +1029,7 @@ _md(render_cloud_storage_banner(
     connection_error=getattr(db, "connection_error", None) or storage_status.get("connection_error"),
     cloud_configured=is_cloud_db_enabled(),
 ))
+_show_db_runtime_warning(db)
 
 history = []
 try:

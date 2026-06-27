@@ -181,6 +181,7 @@ class V12UITests(unittest.TestCase):
         html = render_v12_db_status_card({
             "storage_mode": "local",
             "cloud_connected": False,
+            "db_engine": "SQLite",
             "total_input_hands": 10,
             "total_ai_predictions": 5,
             "pattern_memory_count": 3,
@@ -189,6 +190,13 @@ class V12UITests(unittest.TestCase):
         self.assertIn("저장 방식", html)
         self.assertIn("로컬 SQLite", html)
         self.assertIn("연결 안 됨", html)
+        pg_html = render_v12_db_status_card({
+            "storage_mode": "cloud",
+            "cloud_connected": True,
+            "cloud_configured": True,
+            "db_engine": "PostgreSQL",
+        })
+        self.assertIn("PostgreSQL", pg_html)
         warn = render_cloud_storage_banner(False)
         self.assertIn("로컬 저장", warn)
         ok = render_cloud_storage_banner(True)
