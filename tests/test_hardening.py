@@ -326,7 +326,7 @@ class MobileUITests(unittest.TestCase):
 
     def test_render_perf_v7_html(self):
         html = render_perf_v7_html({"health_color": "green", "total_input_hands": 10})
-        self.assertIn("성능 대시보드", html)
+        self.assertIn("상세 성능", html)
 
 
 class DatabaseSafetyTests(HardeningTestBase):

@@ -1,41 +1,38 @@
-"""Korean UI labels — CASINO PRO AI v9.2 모바일 간소화."""
+"""Korean UI labels — CASINO PRO AI v10 모바일 Ultimate."""
 
 from typing import Any, Dict, Optional
 
-APP_DISPLAY_NAME = "CASINO PRO AI v9 모바일 프로"
-VERSION_DISPLAY = "v9.2 모바일 간소화"
-SUBTITLE = "바카라 로드 분석 대시보드"
+APP_DISPLAY_NAME = "CASINO PRO AI"
+VERSION_DISPLAY = "v10"
+SUBTITLE = "바카라 로드 분석"
 
 SIX_GRID_TITLE = "6매 GRID"
 BIG_ROAD_TITLE = "빅 로드"
 
-MOBILE_LAYOUT_ORDER = (
-    "header",
-    "input_buttons",
+HOME_LAYOUT_ORDER = (
     "recent_history",
     "ai_prediction",
-    "protection_mode",
-    "six_grid",
+    "input_buttons",
     "big_road",
-    "performance",
-    "learning",
-    "backup_export",
-    "advanced_settings",
+    "six_grid",
+    "performance_summary",
 )
 
-BTN_PLAYER = "🔵 플레이어"
-BTN_BANKER = "🔴 뱅커"
-BTN_TIE = "🟢 타이"
-BTN_UNDO = "↩ 되돌리기"
-BTN_RESET = "🗑 초기화"
+BTN_PLAYER = "플레이어"
+BTN_BANKER = "뱅커"
+BTN_TIE = "타이"
+BTN_UNDO = "되돌리기"
+BTN_RESET = "초기화"
 
 AI_PREDICTION_TITLE = "🎯 AI 예측"
-VOTER_SUMMARY_TITLE = "AI 판단 요약"
 
-EXP_BACKUP = "💾 백업 / 내보내기 / 가져오기"
-EXP_ADVANCED = "⚙️ 고급 설정"
-EXP_V6 = "📊 V6 연패 방지 대시보드"
-EXP_PATTERN = "🏆 패턴 랭킹"
+EXP_DETAIL = "▼ 상세 AI 분석"
+EXP_PERF = "▼ 성능 분석"
+EXP_LEARNING = "▼ AI 학습 기록"
+EXP_BACKUP = "▼ 백업 / 내보내기 / 가져오기"
+EXP_ADVANCED = "▼ 고급 설정"
+EXP_V6 = "V6 연패 방지 대시보드"
+EXP_PATTERN = "패턴 랭킹"
 
 BTN_BACKUP_NOW = "지금 백업 만들기"
 BTN_DOWNLOAD_BACKUP = "최신 DB 백업 다운로드"
@@ -45,6 +42,13 @@ BTN_EXPORT_CSV_PRED = "예측 CSV 내보내기"
 BTN_DOWNLOAD_EXPORT = "내보낸 DB 다운로드"
 BTN_IMPORT_DB = "DB 가져오기 (확인 필요)"
 UPLOAD_LABEL = "DB 파일 가져오기 (.db)"
+
+GRADE_KO = {
+    "A": "우수",
+    "B": "양호",
+    "C": "주의",
+    "—": "—",
+}
 
 VOTER_LABELS_KO: Dict[str, str] = {
     "trend_ai": "흐름 AI",
@@ -65,7 +69,6 @@ VOTER_LABELS_KO: Dict[str, str] = {
     "anti_six_loss_ai": "6연패 방어",
 }
 
-# English strings that must not appear in main mobile UI HTML output.
 FORBIDDEN_MAIN_UI_ENGLISH = (
     "AI Prediction",
     "Expected hit rate",
@@ -75,16 +78,15 @@ FORBIDDEN_MAIN_UI_ENGLISH = (
     "PLAYER",
     "BANKER",
     "Create backup now",
-    "Download latest DB backup",
     "Export DB",
     "Import DB",
-    "Backup / Export / Import",
+    "Backup / Export",
     "Advanced settings",
     "Big Road",
-    "neutral",
     "Medium",
     "High",
     "Low",
+    "neutral",
 )
 
 RISK_LEVEL_KO = {

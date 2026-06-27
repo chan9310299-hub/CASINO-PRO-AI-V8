@@ -5,7 +5,7 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 sys.path.insert(0, str(APP_DIR))
 
-from ui_ko import MOBILE_LAYOUT_ORDER
+from ui_ko import HOME_LAYOUT_ORDER
 
 
 class DerivedRoadRemovedTests(unittest.TestCase):
@@ -40,20 +40,20 @@ class DerivedRoadRemovedTests(unittest.TestCase):
         self.assertNotIn("derived-row", self.mobile_css)
 
     def test_layout_order_no_derived_roads(self):
-        self.assertNotIn("derived_roads", MOBILE_LAYOUT_ORDER)
-        six_idx = MOBILE_LAYOUT_ORDER.index("six_grid")
-        big_idx = MOBILE_LAYOUT_ORDER.index("big_road")
-        perf_idx = MOBILE_LAYOUT_ORDER.index("performance")
-        self.assertLess(six_idx, big_idx)
-        self.assertLess(big_idx, perf_idx)
+        from ui_ko import HOME_LAYOUT_ORDER
+        self.assertNotIn("derived_roads", HOME_LAYOUT_ORDER)
+        big_idx = HOME_LAYOUT_ORDER.index("big_road")
+        six_idx = HOME_LAYOUT_ORDER.index("six_grid")
+        perf_idx = HOME_LAYOUT_ORDER.index("performance_summary")
+        self.assertLess(big_idx, six_idx)
+        self.assertLess(six_idx, perf_idx)
 
-    def test_six_grid_directly_before_big_road_in_source(self):
-        six_idx = self.app_source.find("render_six_grid(history)")
-        big_idx = self.app_source.find("render_bigroad(bigroad)")
-        self.assertGreater(six_idx, 0)
-        self.assertGreater(big_idx, six_idx)
-        between = self.app_source[six_idx:big_idx]
-        self.assertNotIn("derived", between.lower())
+    def test_six_grid_after_big_road_in_source(self):
+        main = self.app_source.split("# --- App ---")[1]
+        big_idx = main.find("render_bigroad(bigroad)")
+        six_idx = main.find("render_six_grid(history)")
+        self.assertGreater(big_idx, 0)
+        self.assertGreater(six_idx, big_idx)
 
     def test_ai_still_computes_derived_internally(self):
         self.assertIn("BigEyeRoad", self.app_source)
@@ -61,7 +61,7 @@ class DerivedRoadRemovedTests(unittest.TestCase):
 
     def test_version_v92(self):
         from local_config import VERSION
-        self.assertIn("v9.2", VERSION)
+        self.assertIn("v10", VERSION)
 
 
 if __name__ == "__main__":

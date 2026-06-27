@@ -7,11 +7,10 @@ APP_DIR = Path(__file__).resolve().parent.parent / "app"
 sys.path.insert(0, str(APP_DIR))
 
 from ui_ko import (
-    AI_PREDICTION_TITLE,
     BTN_PLAYER,
     EXP_BACKUP,
     FORBIDDEN_MAIN_UI_ENGLISH,
-    MOBILE_LAYOUT_ORDER,
+    HOME_LAYOUT_ORDER,
     SIX_GRID_TITLE,
     VOTER_LABELS_KO,
     confidence_label_ko,
@@ -29,7 +28,7 @@ from test_ai import _build_inputs
 class KoreanUILabelTests(unittest.TestCase):
     def test_app_name_korean(self):
         from local_config import APP_NAME
-        self.assertIn("모바일", APP_NAME)
+        self.assertIn("CASINO PRO AI", APP_NAME)
 
     def test_prediction_labels(self):
         self.assertEqual(prediction_label_ko("P"), "플레이어")
@@ -61,12 +60,12 @@ class KoreanUILabelTests(unittest.TestCase):
 
     def test_layout_order_includes_six_grid(self):
         self.assertLess(
-            MOBILE_LAYOUT_ORDER.index("ai_prediction"),
-            MOBILE_LAYOUT_ORDER.index("six_grid"),
+            HOME_LAYOUT_ORDER.index("ai_prediction"),
+            HOME_LAYOUT_ORDER.index("big_road"),
         )
         self.assertLess(
-            MOBILE_LAYOUT_ORDER.index("six_grid"),
-            MOBILE_LAYOUT_ORDER.index("big_road"),
+            HOME_LAYOUT_ORDER.index("big_road"),
+            HOME_LAYOUT_ORDER.index("six_grid"),
         )
 
 
@@ -82,22 +81,21 @@ class KoreanUIAppSourceTests(unittest.TestCase):
         self.assertEqual(idx_exp, -1)
 
     def test_layout_order_in_source(self):
-        ai_idx = self.app_source.find("render_ai_analysis(")
-        six_idx = self.app_source.find("render_six_grid(history)")
-        big_idx = self.app_source.find("render_bigroad(bigroad)")
-        self.assertLess(ai_idx, six_idx)
-        self.assertLess(six_idx, big_idx)
+        main = self.app_source.split("# --- App ---")[1]
+        ai_idx = main.find("render_v10_prediction_card")
+        big_idx = main.find("render_bigroad(bigroad)")
+        six_idx = main.find("render_six_grid(history)")
+        self.assertLess(ai_idx, big_idx)
+        self.assertLess(big_idx, six_idx)
 
     def test_korean_prediction_card_markers(self):
-        self.assertIn("플레이어 확률", self.app_source)
-        self.assertIn("뱅커 확률", self.app_source)
-        self.assertIn("예상 적중률", self.app_source)
-        self.assertIn("AI_PREDICTION_TITLE", self.app_source)
+        v10_src = (APP_DIR / "v10_ui.py").read_text(encoding="utf-8")
+        self.assertIn("플레이어", v10_src)
+        self.assertIn("예상 적중률", v10_src)
+        self.assertIn("render_v10_prediction_card", self.app_source)
 
-    def test_no_forbidden_english_in_render_ai_analysis(self):
-        start = self.app_source.find("def render_ai_analysis")
-        end = self.app_source.find("\ndef render_data_count_card")
-        block = self.app_source[start:end]
+    def test_no_forbidden_english_in_v10_prediction(self):
+        block = (APP_DIR / "v10_ui.py").read_text(encoding="utf-8")
         for word in FORBIDDEN_MAIN_UI_ENGLISH:
             self.assertNotIn(word, block, msg=f"Found forbidden English: {word}")
 
@@ -106,7 +104,7 @@ class KoreanUIAppSourceTests(unittest.TestCase):
 
     def test_mobile_css_sticky_and_font(self):
         self.assertIn("sticky-input-wrap", MOBILE_CSS)
-        self.assertIn("56px", MOBILE_CSS)
+        self.assertIn("60px", MOBILE_CSS)
         self.assertIn("Noto Sans KR", self.app_source)
 
 

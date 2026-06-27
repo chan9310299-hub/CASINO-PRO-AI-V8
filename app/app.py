@@ -9,10 +9,8 @@ _APP_DIR = Path(__file__).resolve().parent
 if str(_APP_DIR) not in sys.path:
     sys.path.insert(0, str(_APP_DIR))
 
-from ai.final_prediction import LOW_CONFIDENCE_STATUS
 from local_config import APP_NAME, EXPORT_DIR, VERSION
 from ui_ko import (
-    AI_PREDICTION_TITLE,
     BIG_ROAD_TITLE,
     BTN_BACKUP_NOW,
     BTN_BANKER,
@@ -28,19 +26,25 @@ from ui_ko import (
     BTN_UNDO,
     EXP_ADVANCED,
     EXP_BACKUP,
+    EXP_DETAIL,
+    EXP_LEARNING,
     EXP_PATTERN,
+    EXP_PERF,
     EXP_V6,
     SIX_GRID_TITLE,
-    SUBTITLE,
     UPLOAD_LABEL,
-    VOTER_SUMMARY_TITLE,
-    confidence_label_ko,
-    prediction_label_ko,
     protection_mode_on_ko,
     protection_status_ko,
     risk_level_ko,
-    vote_label_ko,
     voter_label_ko,
+    vote_label_ko,
+)
+from v10_stats import build_v10_home_stats
+from v10_ui import (
+    render_v10_detail_analysis,
+    render_v10_header,
+    render_v10_home_stats,
+    render_v10_prediction_card,
 )
 from bigroad import BigRoadEngine
 from roadmap_ai import RoadmapAI
@@ -91,9 +95,10 @@ try:
         mobile_pro_close,
         render_cloud_warning_html,
         render_home_hint_html,
-        render_perf_v7_html,
         sticky_input_close,
         sticky_input_open,
+        sticky_prediction_close,
+        sticky_prediction_open,
     )
 except Exception:
     MOBILE_CSS = ""
@@ -102,9 +107,6 @@ except Exception:
         return ""
 
     def render_home_hint_html():
-        return ""
-
-    def render_perf_v7_html(metrics):
         return ""
 
     def mobile_pro_open():
@@ -117,6 +119,12 @@ except Exception:
         return ""
 
     def sticky_input_close():
+        return ""
+
+    def sticky_prediction_open():
+        return ""
+
+    def sticky_prediction_close():
         return ""
 
 try:
@@ -360,89 +368,52 @@ def render_history_chips(history, limit=24):
     _md(
         f'<div class="dash-card"><div class="card-title">📊 최근 기록</div>'
         f'<div class="chip-row">{chips}</div>'
-        f'<div class="history-meta"><span>P: {history.count("P")}</span> &nbsp;|&nbsp; '
-        f'<span>B: {history.count("B")}</span> &nbsp;|&nbsp; '
-        f'<span>T: {history.count("T")}</span> &nbsp;|&nbsp; '
+        f'<div class="history-meta"><span>플: {history.count("P")}</span> &nbsp;|&nbsp; '
+        f'<span>뱅: {history.count("B")}</span> &nbsp;|&nbsp; '
+        f'<span>타: {history.count("T")}</span> &nbsp;|&nbsp; '
         f'총 <span>{len(history)}</span> 게임</div></div>'
     )
 
 
+def render_input_buttons(db):
+    _md(sticky_input_open())
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        if st.button(f"🔵 {BTN_PLAYER}", use_container_width=True, key="btn_p"):
+            process_new_hand(db, "P", lambda h: run_ai_analysis(
+                h, db, st.session_state.protection_mode_enabled))
+            st.rerun()
+    with c2:
+        if st.button(f"🔴 {BTN_BANKER}", use_container_width=True, key="btn_b"):
+            process_new_hand(db, "B", lambda h: run_ai_analysis(
+                h, db, st.session_state.protection_mode_enabled))
+            st.rerun()
+    with c3:
+        if st.button(f"🟢 {BTN_TIE}", use_container_width=True, key="btn_t"):
+            process_new_hand(db, "T", lambda h: run_ai_analysis(
+                h, db, st.session_state.protection_mode_enabled))
+            st.rerun()
+    with c4:
+        if st.button(f"↩ {BTN_UNDO}", use_container_width=True, key="btn_undo"):
+            db.undo_last()
+            st.rerun()
+    with c5:
+        if st.button(f"🗑 {BTN_RESET}", use_container_width=True, key="btn_reset"):
+            db.reset_current()
+            st.rerun()
+    _md(sticky_input_close())
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def _build_bigroad_cached(history_tuple):
+    engine = BigRoadEngine()
+    engine.load(list(history_tuple))
+    return engine.build()
+
+
 def render_ai_analysis(pred, conf, status, reason, ai_result=None):
-    ai_result = ai_result or {}
-    prob_p = ai_result.get("probability_p")
-    prob_b = ai_result.get("probability_b")
-    voters = ai_result.get("voters") or []
-    low_conf = ai_result.get("low_confidence", False) or (conf or 0) < 0.60
-    conf_ko = confidence_label_ko(conf or 0, ai_result.get("confidence_label"))
-    risk_ko = risk_level_ko(ai_result.get("risk_level"))
-    expected_hit = ai_result.get("expected_hit_rate")
-    if expected_hit is None and pred in ("P", "B"):
-        side = prob_p if pred == "P" else prob_b
-        expected_hit = round(max(conf or 0, side or 0.5) * 100, 1)
-
-    if pred is None:
-        body = (
-            f'<div class="pred-card pred-wait">'
-            f'{html.escape(status or "6개 입력 후 7번째부터 예측 시작")}</div>'
-        )
-        low_block = ""
-    elif pred in ("P", "B"):
-        label = prediction_label_ko(pred)
-        cls = "pred-player" if pred == "P" else "pred-banker"
-        if low_conf:
-            cls += " pred-low-conf"
-        p_pct = round((prob_p if prob_p is not None else 0.5) * 100, 1)
-        b_pct = round((prob_b if prob_b is not None else 0.5) * 100, 1)
-        low_block = (
-            f'<div class="low-conf-banner">⚠️ {html.escape(LOW_CONFIDENCE_STATUS)}</div>'
-            if low_conf else ""
-        )
-        body = (
-            f'{low_block}'
-            f'<div class="prob-panel">'
-            f'<div style="font-size:0.95rem;font-weight:800;margin-bottom:0.35rem;color:#e2e8f0;">'
-            f'예측: <span class="{"prob-p" if pred == "P" else "prob-b"}">{html.escape(label)}</span></div>'
-            f'<div>예상 적중률: <span class="prob-hit">{expected_hit}%</span></div>'
-            f'<div>플레이어 확률: <span class="prob-p">{p_pct}%</span></div>'
-            f'<div>뱅커 확률: <span class="prob-b">{b_pct}%</span></div>'
-            f'<div>신뢰도: <strong>{html.escape(conf_ko)}</strong></div>'
-            f'<div>위험도: <strong>{html.escape(risk_ko)}</strong></div>'
-            f'</div>'
-            f'<div class="pred-card {cls}">{html.escape(label)}</div>'
-        )
-    else:
-        body = f'<div class="pred-card pred-wait">분석 대기</div>'
-        low_block = ""
-
-    items = "".join(f"<li>{html.escape(str(r))}</li>" for r in reason) or "<li>—</li>"
-    status_text = html.escape(LOW_CONFIDENCE_STATUS if low_conf and pred in ("P", "B") else (status or "분석 대기"))
-
-    voter_rows = ""
-    for v in voters:
-        vlabel = voter_label_ko(v.get("name", ""))
-        vote = vote_label_ko(v.get("vote"))
-        voter_rows += (
-            f'<tr><td>{html.escape(vlabel)}</td>'
-            f'<td>{html.escape(vote)}</td></tr>'
-        )
-    voter_table = (
-        f'<table class="learn-table" style="margin-top:0.35rem;">{voter_rows}</table>'
-        if voter_rows else ""
-    )
-    voter_section = ""
-    if voter_table:
-        voter_section = (
-            f'<div style="font-size:0.72rem;color:#64748b;margin-top:0.35rem;">'
-            f'{html.escape(VOTER_SUMMARY_TITLE)}</div>' + voter_table
-        )
-
-    _md(
-        f'<div class="dash-card"><div class="card-title">{AI_PREDICTION_TITLE}</div>'
-        f'{body}'
-        f'<div class="status-box">📌 {status_text}</div>'
-        f'<div class="reason-box"><ul>{items}</ul></div>'
-        f'{voter_section}</div>'
-    )
+    """Legacy wrapper — home screen uses v10 prediction card."""
+    _md(render_v10_prediction_card(pred, conf, ai_result))
 
 
 def render_data_count_card(data_counts):
@@ -968,44 +939,7 @@ try:
 except Exception:
     db_status = {}
 
-_md(
-    f'<div class="dash-title">🔥 {html.escape(APP_NAME)}</div>'
-    f'<div class="dash-subtitle">{html.escape(VERSION)} · {html.escape(SUBTITLE)}</div>'
-)
 _md(render_cloud_warning_html())
-
-_md(sticky_input_open())
-c1, c2, c3, c4, c5 = st.columns(5)
-
-with c1:
-    if st.button(BTN_PLAYER, use_container_width=True):
-        process_new_hand(db, "P", lambda h: run_ai_analysis(
-            h, db, st.session_state.protection_mode_enabled))
-        st.rerun()
-
-with c2:
-    if st.button(BTN_BANKER, use_container_width=True):
-        process_new_hand(db, "B", lambda h: run_ai_analysis(
-            h, db, st.session_state.protection_mode_enabled))
-        st.rerun()
-
-with c3:
-    if st.button(BTN_TIE, use_container_width=True):
-        process_new_hand(db, "T", lambda h: run_ai_analysis(
-            h, db, st.session_state.protection_mode_enabled))
-        st.rerun()
-
-with c4:
-    if st.button(BTN_UNDO, use_container_width=True):
-        db.undo_last()
-        st.rerun()
-
-with c5:
-    if st.button(BTN_RESET, use_container_width=True):
-        db.reset_current()
-        st.rerun()
-
-_md(sticky_input_close())
 
 history = []
 try:
@@ -1013,9 +947,7 @@ try:
 except Exception:
     history = []
 
-road_engine = BigRoadEngine()
-road_engine.load(history)
-bigroad = road_engine.build()
+bigroad = _build_bigroad_cached(tuple(history))
 
 ai_result = run_ai_analysis(history, db, st.session_state.protection_mode_enabled)
 try:
@@ -1029,15 +961,11 @@ reason = ai_result.get("reason_in_korean") or ai_result.get("reason", [])
 status = ai_result.get("status", "")
 grade = ai_result.get("quality_grade", "—")
 prot = ai_result.get("protection_mode") or {}
-try:
-    perf_metrics = build_performance_dashboard(db, history, ai_result)
-except Exception:
-    perf_metrics = {"health_color": "gray", "total_input_hands": len(history)}
 
 try:
-    stats = calculate_stats(history)
+    streak_stats = calculate_stats(history)
 except Exception:
-    stats = {
+    streak_stats = {
         "current_win": 0, "current_lose": 0, "max_win": 0, "max_lose": 0,
         "correct": 0, "wrong": 0, "accuracy": 0.0,
     }
@@ -1050,38 +978,54 @@ except Exception:
         "pending": 0, "signal_count": 0, "pattern_memory_count": 0,
     }
 
+home_stats = build_v10_home_stats(db, learning, streak_stats)
+
 _md(mobile_pro_open())
+_md(render_v10_header(grade, db_status))
 
 render_history_chips(history)
 
-if grade and grade != "—":
-    _md(
-        f'<div style="text-align:center;font-size:0.74rem;color:#8eb4ff;margin-bottom:0.3rem;">'
-        f'품질 등급: <strong>{html.escape(str(grade))}</strong></div>'
-    )
-render_ai_analysis(pred, conf, status, reason, ai_result)
+_md(sticky_prediction_open())
+_md(render_v10_prediction_card(pred, conf, ai_result))
+_md(sticky_prediction_close())
 
-st.session_state.protection_mode_enabled = st.toggle(
-    "6단계 보호 모드",
-    value=st.session_state.protection_mode_enabled,
-    help="연패·위험 구간을 표시합니다. 예측은 항상 플레이어/뱅커로 표시됩니다.",
-)
-render_protection_mode_card(
-    prot,
-    st.session_state.protection_mode_enabled,
-    low_confidence=ai_result.get("low_confidence", False),
-)
-
-render_six_grid(history)
+render_input_buttons(db)
 
 render_bigroad(bigroad)
+render_six_grid(history)
 
-html_block = render_perf_v7_html(perf_metrics)
-if html_block:
-    _md(html_block)
-render_performance_card(stats)
+_md(render_v10_home_stats(home_stats))
 
-render_learning_card(learning)
+with st.expander(EXP_DETAIL, expanded=False):
+    _md(render_v10_detail_analysis(ai_result, reason))
+    st.session_state.protection_mode_enabled = st.toggle(
+        "6단계 보호 모드",
+        value=st.session_state.protection_mode_enabled,
+        help="연패·위험 구간을 표시합니다. 예측은 항상 플레이어/뱅커로 표시됩니다.",
+    )
+    render_protection_mode_card(
+        prot,
+        st.session_state.protection_mode_enabled,
+        low_confidence=ai_result.get("low_confidence", False),
+    )
+
+with st.expander(EXP_PERF, expanded=False):
+    try:
+        perf_metrics = build_performance_dashboard(db, history, ai_result)
+    except Exception:
+        perf_metrics = {}
+    if perf_metrics:
+        try:
+            from mobile_ui import render_perf_v7_html
+        except Exception:
+            render_perf_v7_html = None
+        if render_perf_v7_html:
+            block = render_perf_v7_html(perf_metrics)
+            if block:
+                _md(block)
+
+with st.expander(EXP_LEARNING, expanded=False):
+    render_learning_card(learning)
 
 with st.expander(EXP_BACKUP, expanded=False):
     render_data_management(db)
@@ -1096,7 +1040,7 @@ with st.expander(EXP_ADVANCED, expanded=False):
     if st.button("AI 백테스트 실행", key="btn_run_backtest", use_container_width=True):
         st.session_state.backtest_results = run_backtest_report(db)
     if st.session_state.backtest_results:
-        with st.expander("📈 백테스트 리포트", expanded=False):
+        with st.expander("백테스트 리포트", expanded=False):
             render_backtest_results(st.session_state.backtest_results)
     render_learning_reset(db)
     render_save_card()
