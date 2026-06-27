@@ -1,53 +1,27 @@
+from derived_road import build_big_eye
+
+
 class BigEyeRoad:
 
-    def __init__(self, bigroad):
+    def __init__(self, bigroad=None, history=None):
         self.bigroad = bigroad
+        self.history = history
 
     def build(self):
+        history = self._resolve_history()
+        return build_big_eye(history)["marks"]
 
-        road = []
+    def build_grid(self):
+        history = self._resolve_history()
+        return build_big_eye(history)["grid"]
 
-        if len(self.bigroad) < 2:
-            return road
+    def build_full(self):
+        history = self._resolve_history()
+        return build_big_eye(history)
 
-        for cell in self.bigroad:
-
-            if cell["col"] < 2:
-                continue
-
-            if cell["row"] == 0:
-
-                left = self.column_height(cell["col"] - 1)
-                left2 = self.column_height(cell["col"] - 2)
-
-                if left == left2:
-                    road.append("R")
-                else:
-                    road.append("B")
-
-            else:
-
-                if self.has_cell(cell["row"], cell["col"] - 1):
-                    road.append("R")
-                else:
-                    road.append("B")
-
-        return road
-
-    def column_height(self, col):
-
-        h = 0
-
-        for c in self.bigroad:
-            if c["col"] == col:
-                h += 1
-
-        return h
-
-    def has_cell(self, row, col):
-
-        for c in self.bigroad:
-            if c["row"] == row and c["col"] == col:
-                return True
-
-        return False
+    def _resolve_history(self):
+        if self.history is not None:
+            return self.history
+        if self.bigroad:
+            return [cell["result"] for cell in self.bigroad if cell.get("result")]
+        return []
