@@ -1,5 +1,5 @@
 from collections import Counter, defaultdict
-from config import PB_RESULTS, TIE, MAX_PATTERN_SIZE
+from local_config import PB_RESULTS, TIE, MAX_PATTERN_SIZE
 
 
 class LearningEngine:

@@ -1,5 +1,5 @@
 import streamlit as st
-from config import APP_NAME, APP_VERSION
+from local_config import APP_NAME, APP_VERSION
 
 
 class CasinoUI:

@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-from config import DATA_DIR, DB_PATH, EXPORT_DIR
+from local_config import DATA_DIR, DB_PATH, EXPORT_DIR
 
 
 def ensure_export_dir():

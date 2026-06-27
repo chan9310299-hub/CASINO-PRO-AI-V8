@@ -1,27 +1,12 @@
 """Database backup and restore."""
 
-import importlib.util
 import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-
-def _load_local_config():
-    """Always load app/config.py, even if another config module is on sys.path."""
-    config_path = Path(__file__).resolve().parent / "config.py"
-    spec = importlib.util.spec_from_file_location("_casino_pro_config", config_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load config from {config_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_config = _load_local_config()
-BACKUP_DIR = _config.BACKUP_DIR
-DB_PATH = _config.DB_PATH
+from local_config import BACKUP_DIR, DB_PATH
 
 
 def _ensure_backup_dir():

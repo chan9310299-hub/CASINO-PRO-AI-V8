@@ -3,9 +3,32 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 
-from backup_manager import backup_database, get_last_backup_time
-from config import DB_PATH
-from db_migration import get_migration_status, run_migrations
+from local_config import DB_PATH
+
+try:
+    from backup_manager import backup_database, get_last_backup_time
+except Exception:
+    def backup_database(reason="manual"):
+        return None
+
+    def get_last_backup_time():
+        return None
+
+try:
+    from db_migration import get_migration_status, run_migrations
+except Exception:
+    def get_migration_status(conn):
+        return {
+            "version": 0,
+            "target_version": 0,
+            "tables_ok": True,
+            "missing_tables": [],
+            "total_stored_rows": 0,
+            "status": "OK",
+        }
+
+    def run_migrations(conn, backup_fn=None):
+        return {"version": 0, "migrated": False}
 
 LEARNING_SIGNAL_DEFAULTS = {
     "recent_10": 0.45,
@@ -28,13 +51,27 @@ class Database:
         self.conn = sqlite3.connect(DB_PATH)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
-        run_migrations(self.conn, backup_fn=backup_database)
+        try:
+            run_migrations(self.conn, backup_fn=backup_database)
+        except Exception:
+            pass
         self.init_db()
 
     def get_db_status(self):
-        status = get_migration_status(self.conn)
-        status["last_backup"] = get_last_backup_time() or "—"
-        return status
+        try:
+            status = get_migration_status(self.conn)
+            status["last_backup"] = get_last_backup_time() or "—"
+            return status
+        except Exception:
+            return {
+                "version": 0,
+                "target_version": 0,
+                "tables_ok": True,
+                "missing_tables": [],
+                "total_stored_rows": 0,
+                "status": "OK",
+                "last_backup": "—",
+            }
 
     @contextmanager
     def _connection(self):

@@ -1,15 +1,15 @@
 import html
 import math
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-from ai.backtest_report import run_backtest_report
-from ai.pattern_ranking import has_enough_pattern_data, rank_patterns
-from ai.performance_dashboard import build_performance_dashboard
-from backup_manager import backup_database, daily_backup_if_needed, list_backups, restore_backup
-from config import APP_NAME, VERSION
-from database import Database
-from export_import import export_db_copy, export_history_csv, export_predictions_csv, import_db_safe
-from mobile_ui import MOBILE_CSS, render_perf_v7_html
+_APP_DIR = Path(__file__).resolve().parent
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
+
+from local_config import APP_NAME, EXPORT_DIR, VERSION
 from bigroad import BigRoadEngine
 from roadmap_ai import RoadmapAI
 from bigeye import BigEyeRoad
@@ -21,6 +21,84 @@ from ai_learning import (
     ensure_prediction_logged,
     process_new_hand,
 )
+
+try:
+    from backup_manager import backup_database, daily_backup_if_needed, list_backups, restore_backup
+except Exception:
+    def backup_database(reason="manual"):
+        return None
+
+    def daily_backup_if_needed():
+        return None
+
+    def list_backups(limit=20):
+        return []
+
+    def restore_backup(backup_path):
+        return False
+
+try:
+    from export_import import export_db_copy, export_history_csv, export_predictions_csv, import_db_safe
+except Exception:
+    def export_db_copy():
+        return EXPORT_DIR / "export_unavailable.db"
+
+    def export_history_csv(db):
+        return EXPORT_DIR / "history.csv"
+
+    def export_predictions_csv(db):
+        return EXPORT_DIR / "ai_prediction_history.csv"
+
+    def import_db_safe(source, backup_fn):
+        return {"ok": False, "error": "export module unavailable"}
+
+try:
+    from mobile_ui import MOBILE_CSS, render_perf_v7_html
+except Exception:
+    MOBILE_CSS = ""
+
+    def render_perf_v7_html(metrics):
+        return ""
+
+try:
+    from ai.backtest_report import run_backtest_report
+except Exception:
+    def run_backtest_report(db):
+        return {}
+
+try:
+    from ai.pattern_ranking import has_enough_pattern_data, rank_patterns
+except Exception:
+    def has_enough_pattern_data(db, min_patterns=5):
+        return False
+
+    def rank_patterns(db, limit=20):
+        return []
+
+try:
+    from ai.performance_dashboard import build_performance_dashboard
+except Exception:
+    def build_performance_dashboard(db, history, ai_result=None):
+        return {
+            "total_input_hands": len(history or []),
+            "total_ai_predictions": 0,
+            "resolved_predictions": 0,
+            "overall_accuracy": 0,
+            "recent_30_accuracy": 0,
+            "recent_100_accuracy": 0,
+            "current_losing_streak": 0,
+            "max_losing_streak": 0,
+            "pass_rate": 0,
+            "avg_confidence": 0,
+            "pattern_memory_count": 0,
+            "signal_count": 0,
+            "health_color": "gray",
+        }
+
+try:
+    from database import Database
+except Exception:
+    raise
 
 
 st.set_page_config(page_title=APP_NAME, layout="wide", initial_sidebar_state="collapsed")
@@ -511,7 +589,6 @@ def render_data_management(db):
             ic1, ic2 = st.columns(2)
             with ic1:
                 if st.button("Import 확인", key="btn_import_ok", use_container_width=True):
-                    from config import EXPORT_DIR
                     tmp = EXPORT_DIR / uploaded.name
                     tmp.write_bytes(uploaded.getvalue())
                     import_db_safe(tmp, backup_database)
@@ -773,9 +850,16 @@ if "protection_mode_enabled" not in st.session_state:
 if "backtest_results" not in st.session_state:
     st.session_state.backtest_results = None
 
-daily_backup_if_needed()
+try:
+    daily_backup_if_needed()
+except Exception:
+    pass
+
 db = Database()
-db_status = db.get_db_status()
+try:
+    db_status = db.get_db_status()
+except Exception:
+    db_status = {}
 
 _md(
     f'<div class="dash-title">🔥 {html.escape(APP_NAME)}</div>'

@@ -1,5 +1,5 @@
 from collections import Counter
-from config import TIE, PB_RESULTS
+from local_config import TIE, PB_RESULTS
 
 
 class TieEngine:

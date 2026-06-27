@@ -1,4 +1,4 @@
-from config import MIN_PREDICT_COUNT
+from local_config import MIN_PREDICT_COUNT
 from learning import LearningEngine
 
 
