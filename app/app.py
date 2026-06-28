@@ -95,6 +95,7 @@ try:
         mobile_pro_close,
         render_cloud_warning_html,
         render_home_hint_html,
+        render_app_load_ok_html,
         sticky_input_close,
         sticky_input_open,
         sticky_prediction_close,
@@ -108,6 +109,9 @@ except Exception:
 
     def render_home_hint_html():
         return ""
+
+    def render_app_load_ok_html():
+        return '<div class="app-load-ok">✅ 앱 로딩 완료</div>'
 
     def mobile_pro_open():
         return ""
@@ -186,7 +190,10 @@ def inject_dashboard_css():
     color: #e8eef7;
     font-family: 'Noto Sans KR', sans-serif;
 }
-.block-container { padding-top: 0.65rem; padding-bottom: 0.45rem; max-width: 100%; }
+.block-container {
+    padding-top: 0.65rem; padding-bottom: 0.45rem; max-width: 100%;
+    overflow-x: hidden; overflow-y: visible; min-height: auto; height: auto;
+}
 header[data-testid="stHeader"] { background: transparent; }
 #MainMenu, footer, .stDeployButton { visibility: hidden; }
 .card-title { text-transform: none; letter-spacing: 0; }
@@ -370,6 +377,15 @@ def _show_db_runtime_warning(db) -> None:
         st.warning(msg)
     elif cloud_err and not getattr(db, "cloud_fallback", False):
         st.warning(cloud_err)
+
+
+def _safe_section(label: str, fn, *args, **kwargs):
+    """Run a render helper; show Korean warning instead of crashing the page."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        st.warning(f"{label}을(를) 표시할 수 없습니다.")
+        return None
 
 
 def render_history_chips(history, limit=24):
@@ -1000,11 +1016,11 @@ if "protection_mode_enabled" not in st.session_state:
 if "backtest_results" not in st.session_state:
     st.session_state.backtest_results = None
 
-try:
-    daily_backup_if_needed()
-except Exception:
-    pass
+_md(render_app_load_ok_html())
+_md(mobile_pro_open())
 
+db = None
+storage_status = {}
 try:
     from storage import get_storage_backend, is_cloud_db_enabled
     from v12_ui import render_cloud_storage_banner
@@ -1017,9 +1033,25 @@ except Exception:
 
     db = Database()
     storage_status = {"cloud_connected": False, "storage_mode": "local"}
+    is_cloud_db_enabled = lambda: False  # noqa: E731
+    render_cloud_storage_banner = lambda *a, **k: ""  # noqa: E731
+
+history = []
+try:
+    history = db.get_results() or [] if db else []
+except Exception:
+    history = []
+
+_safe_section("최근 기록", render_history_chips, history)
+_safe_section("입력 버튼", render_input_buttons, db)
 
 try:
-    db_status = db.get_db_status()
+    daily_backup_if_needed()
+except Exception:
+    pass
+
+try:
+    db_status = db.get_db_status() if db else {}
 except Exception:
     db_status = {}
 db_status.update({
@@ -1035,23 +1067,31 @@ try:
 except Exception:
     pass
 
-_md(render_cloud_storage_banner(
-    storage_status.get("cloud_connected", False),
-    connection_error=getattr(db, "connection_error", None) or storage_status.get("connection_error"),
-    cloud_configured=is_cloud_db_enabled(),
-    cloud_fallback=getattr(db, "cloud_fallback", False) or storage_status.get("cloud_fallback", False),
-))
-_show_db_runtime_warning(db)
-
-history = []
 try:
-    history = db.get_results() or []
+    _md(render_cloud_storage_banner(
+        storage_status.get("cloud_connected", False),
+        connection_error=getattr(db, "connection_error", None) or storage_status.get("connection_error"),
+        cloud_configured=is_cloud_db_enabled(),
+        cloud_fallback=getattr(db, "cloud_fallback", False) or storage_status.get("cloud_fallback", False),
+    ))
 except Exception:
-    history = []
+    pass
+try:
+    _show_db_runtime_warning(db)
+except Exception:
+    pass
 
-bigroad = _build_bigroad_cached(tuple(history))
+try:
+    bigroad = _build_bigroad_cached(tuple(history))
+except Exception:
+    bigroad = BigRoadEngine().build()
 
-ai_result = run_ai_analysis(history, db, st.session_state.protection_mode_enabled)
+try:
+    ai_result = run_ai_analysis(history, db, st.session_state.protection_mode_enabled)
+except Exception:
+    from ai.quality_grade import safe_ai_result
+    ai_result = safe_ai_result()
+
 try:
     ensure_prediction_logged(db, history, ai_result)
 except Exception:
@@ -1080,36 +1120,46 @@ except Exception:
         "pending": 0, "signal_count": 0, "pattern_memory_count": 0,
     }
 
-home_stats = build_v10_home_stats(db, learning, streak_stats)
+try:
+    home_stats = build_v10_home_stats(db, learning, streak_stats)
+except Exception:
+    home_stats = {}
 
-_md(mobile_pro_open())
-_md(render_v10_header(grade, db_status))
+try:
+    _md(render_v10_header(grade, db_status))
+except Exception:
+    pass
 
-render_history_chips(history)
+try:
+    _md(sticky_prediction_open())
+    _md(render_v10_prediction_card(pred, conf, ai_result))
+    _md(sticky_prediction_close())
+except Exception:
+    st.warning("예측 카드를 표시할 수 없습니다.")
 
-render_input_buttons(db)
+_safe_section("BIG ROAD", render_bigroad, bigroad)
+_safe_section("6매", render_six_grid, history)
 
-_md(sticky_prediction_open())
-_md(render_v10_prediction_card(pred, conf, ai_result))
-_md(sticky_prediction_close())
-
-render_bigroad(bigroad)
-render_six_grid(history)
-
-_md(render_v10_home_stats(home_stats))
+try:
+    _md(render_v10_home_stats(home_stats))
+except Exception:
+    pass
 
 with st.expander(EXP_DETAIL, expanded=False):
-    _md(render_v10_detail_analysis(ai_result, reason))
-    st.session_state.protection_mode_enabled = st.toggle(
-        "6단계 보호 모드",
-        value=st.session_state.protection_mode_enabled,
-        help="연패·위험 구간을 표시합니다. 예측은 항상 플레이어/뱅커로 표시됩니다.",
-    )
-    render_protection_mode_card(
-        prot,
-        st.session_state.protection_mode_enabled,
-        low_confidence=ai_result.get("low_confidence", False),
-    )
+    try:
+        _md(render_v10_detail_analysis(ai_result, reason))
+        st.session_state.protection_mode_enabled = st.toggle(
+            "6단계 보호 모드",
+            value=st.session_state.protection_mode_enabled,
+            help="연패·위험 구간을 표시합니다. 예측은 항상 플레이어/뱅커로 표시됩니다.",
+        )
+        render_protection_mode_card(
+            prot,
+            st.session_state.protection_mode_enabled,
+            low_confidence=ai_result.get("low_confidence", False),
+        )
+    except Exception:
+        st.warning("상세 분석을 표시할 수 없습니다.")
 
 with st.expander(EXP_PERF, expanded=False):
     try:
@@ -1122,31 +1172,46 @@ with st.expander(EXP_PERF, expanded=False):
         except Exception:
             render_perf_v7_html = None
         if render_perf_v7_html:
-            block = render_perf_v7_html(perf_metrics)
-            if block:
-                _md(block)
+            try:
+                block = render_perf_v7_html(perf_metrics)
+                if block:
+                    _md(block)
+            except Exception:
+                st.warning("성능 지표를 표시할 수 없습니다.")
 
 with st.expander(EXP_LEARNING, expanded=False):
-    render_learning_card(learning)
+    _safe_section("학습 통계", render_learning_card, learning)
 
 with st.expander(EXP_BACKUP, expanded=False):
-    render_data_management(db, storage_status)
+    _safe_section("백업/데이터 관리", render_data_management, db, storage_status)
 
 with st.expander(EXP_ADVANCED, expanded=False):
-    render_db_status_card(db_status)
-    render_data_count_card(ai_result.get("data_counts"))
-    with st.expander(EXP_V6, expanded=False):
-        _md(render_v6_dashboard(ai_result.get("v6_dashboard") or {}))
-    with st.expander(EXP_PATTERN, expanded=False):
-        render_pattern_ranking(db)
-    if st.button("AI 백테스트 실행", key="btn_run_backtest", use_container_width=True):
-        st.session_state.backtest_results = run_backtest_report(db)
-    if st.session_state.backtest_results:
-        with st.expander("백테스트 리포트", expanded=False):
-            render_backtest_results(st.session_state.backtest_results)
-    render_learning_reset(db)
-    render_save_card()
+    try:
+        render_db_status_card(db_status)
+        render_data_count_card(ai_result.get("data_counts"))
+        with st.expander(EXP_V6, expanded=False):
+            try:
+                _md(render_v6_dashboard(ai_result.get("v6_dashboard") or {}))
+            except Exception:
+                st.warning("V6 대시보드를 표시할 수 없습니다.")
+        with st.expander(EXP_PATTERN, expanded=False):
+            render_pattern_ranking(db)
+        if st.button("AI 백테스트 실행", key="btn_run_backtest", use_container_width=True):
+            try:
+                st.session_state.backtest_results = run_backtest_report(db)
+            except Exception:
+                st.warning("백테스트 실행 중 오류가 발생했습니다.")
+        if st.session_state.backtest_results:
+            with st.expander("백테스트 리포트", expanded=False):
+                _safe_section("백테스트 결과", render_backtest_results, st.session_state.backtest_results)
+        render_learning_reset(db)
+        render_save_card()
+    except Exception:
+        st.warning("고급 설정을 표시할 수 없습니다.")
 
 _md(mobile_pro_close())
 
-render_footer()
+try:
+    render_footer()
+except Exception:
+    pass

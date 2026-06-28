@@ -50,8 +50,8 @@ class DerivedRoadRemovedTests(unittest.TestCase):
 
     def test_six_grid_after_big_road_in_source(self):
         main = self.app_source.split("# --- App ---")[1]
-        big_idx = main.find("render_bigroad(bigroad)")
-        six_idx = main.find("render_six_grid(history)")
+        big_idx = main.find("render_bigroad")
+        six_idx = main.find("render_six_grid")
         self.assertGreater(big_idx, 0)
         self.assertGreater(six_idx, big_idx)
 

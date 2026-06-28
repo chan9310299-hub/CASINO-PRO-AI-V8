@@ -36,8 +36,8 @@ class V10LayoutTests(unittest.TestCase):
 
     def test_big_road_before_six_grid_in_source(self):
         main = self.app_source.split("# --- App ---")[1]
-        big_idx = main.find("render_bigroad(bigroad)")
-        six_idx = main.find("render_six_grid(history)")
+        big_idx = main.find("render_bigroad")
+        six_idx = main.find("render_six_grid")
         self.assertLess(big_idx, six_idx)
 
     def test_no_voter_summary_on_home(self):

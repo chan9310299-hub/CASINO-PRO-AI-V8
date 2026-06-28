@@ -87,10 +87,10 @@ class KoreanUIAppSourceTests(unittest.TestCase):
 
     def test_layout_order_in_source(self):
         main = self.app_source.split("# --- App ---")[1]
-        btn_idx = main.find("render_input_buttons(db)")
+        btn_idx = main.find("render_input_buttons")
         ai_idx = main.find("render_v10_prediction_card")
-        big_idx = main.find("render_bigroad(bigroad)")
-        six_idx = main.find("render_six_grid(history)")
+        big_idx = main.find("render_bigroad")
+        six_idx = main.find("render_six_grid")
         self.assertLess(btn_idx, ai_idx)
         self.assertLess(ai_idx, big_idx)
         self.assertLess(big_idx, six_idx)
@@ -111,7 +111,8 @@ class KoreanUIAppSourceTests(unittest.TestCase):
 
     def test_mobile_css_sticky_and_font(self):
         self.assertIn("sticky-input-wrap", MOBILE_CSS)
-        self.assertIn("60px", MOBILE_CSS)
+        self.assertIn("52px", MOBILE_CSS)
+        self.assertIn("position: static !important", MOBILE_CSS)
         self.assertIn("Noto Sans KR", self.app_source)
 
 

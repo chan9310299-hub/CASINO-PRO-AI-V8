@@ -14,16 +14,41 @@ MOBILE_CSS = """
 @keyframes barGrow { from { width: 0; } to { width: var(--w, 50%); } }
 @keyframes fadeIn { from { opacity: 0.4; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .stApp, .main, [data-testid="stAppViewContainer"], .block-container {
-    overflow-x: hidden !important; max-width: 100vw !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    max-width: 100vw !important;
+    min-height: auto !important;
+    height: auto !important;
+}
+[data-testid="stAppViewContainer"] > section.main {
+    overflow: visible !important;
+    min-height: auto !important;
+}
+.app-load-ok {
+    font-size: 0.75rem; color: #86efac; text-align: center;
+    padding: 0.35rem 0.5rem; margin-bottom: 0.35rem;
+    background: rgba(34, 197, 94, 0.12); border-radius: 8px;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    position: relative; z-index: 1;
 }
 .mobile-pro-stack {
     display: flex; flex-direction: column; gap: 0.25rem; width: 100%;
-    overflow-x: hidden;
+    overflow-x: hidden; overflow-y: visible;
+    position: relative; z-index: 1;
 }
-header[data-testid="stHeader"], footer, #MainMenu, .stDeployButton,
+header[data-testid="stHeader"] {
+    visibility: hidden !important; height: 0 !important;
+    min-height: 0 !important; padding: 0 !important; margin: 0 !important;
+}
+#MainMenu, .stDeployButton,
 [data-testid="stToolbar"], [data-testid="stToolbarActions"],
 a[data-testid="stBaseLinkButton-header"], .stAppDeployButton,
-iframe[title="GitHub"] { display: none !important; visibility: hidden !important; height: 0 !important; }
+iframe[title="GitHub"] { display: none !important; visibility: hidden !important; }
+footer, [data-testid="stStatusWidget"] {
+    visibility: hidden !important; max-height: 1.5rem !important;
+    overflow: hidden !important; opacity: 0.01 !important;
+    pointer-events: none !important; margin: 0 !important; padding: 0 !important;
+}
 a[href*="github.com/streamlit"] { display: none !important; }
 .v10-header {
     background: rgba(16, 24, 40, 0.95); border: 1px solid rgba(62, 140, 255, 0.25);
@@ -33,12 +58,12 @@ a[href*="github.com/streamlit"] { display: none !important; }
 .v10-brand { font-size: 1.15rem; font-weight: 800; color: #5ecbff; margin-bottom: 0.25rem; }
 .v10-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; font-size: 0.78rem; color: #94a3b8; }
 .sticky-input-wrap {
-    position: sticky; top: 0; z-index: 999;
+    position: sticky; top: 0; z-index: 50;
     background: rgba(7, 11, 20, 0.98); backdrop-filter: blur(8px);
     padding: 0.15rem 0 0.25rem; margin-bottom: 0.15rem;
 }
 .sticky-prediction-wrap {
-    position: sticky; top: 132px; z-index: 998;
+    position: sticky; top: 0; z-index: 40;
     background: rgba(7, 11, 20, 0.97); backdrop-filter: blur(10px);
     padding-bottom: 0.15rem; margin-bottom: 0.15rem;
 }
@@ -97,31 +122,39 @@ a[href*="github.com/streamlit"] { display: none !important; }
     .block-container { padding: 0.25rem 0.35rem 0.35rem !important; }
     .dash-card { padding: 0.55rem 0.6rem !important; margin-bottom: 0.3rem !important; width: 100%; box-sizing: border-box; }
     .card-title { font-size: 0.9rem !important; text-transform: none !important; }
+    .sticky-input-wrap, .sticky-prediction-wrap {
+        position: static !important; z-index: auto !important; top: auto !important;
+    }
+    .mobile-pro-stack div[data-testid="stHorizontalBlock"] {
+        flex-direction: column !important; flex-wrap: nowrap !important;
+    }
+    .mobile-pro-stack div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        flex: 1 1 100% !important; width: 100% !important;
+        min-width: 100% !important; max-width: 100% !important;
+    }
     div[data-testid="column"] .stButton > button,
     .stDownloadButton > button {
-        min-height: 60px !important; font-size: 1rem !important; font-weight: 700 !important;
-        border-radius: 12px !important;
-    }
-    .sticky-input-wrap div[data-testid="column"] {
-        flex: 1 1 31% !important; width: 31% !important; min-width: 31% !important;
-    }
-    .sticky-input-wrap div[data-testid="column"]:nth-child(4),
-    .sticky-input-wrap div[data-testid="column"]:nth-child(5) {
-        flex: 1 1 48% !important; width: 48% !important;
+        min-height: 52px !important; font-size: 1rem !important; font-weight: 700 !important;
+        border-radius: 12px !important; width: 100% !important;
     }
     div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
         flex: 1 1 100% !important; width: 100% !important; min-width: 0 !important;
     }
-    .road-scroll, .six-scroll { max-width: 100%; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+    .road-scroll, .six-scroll { max-width: 100%; overflow-x: auto; overflow-y: visible; -webkit-overflow-scrolling: touch; }
     .pred-hero-player, .pred-hero-banker { font-size: 2rem; }
-    .v10-perf-row { grid-template-columns: repeat(2, 1fr) !important; }
+    .v10-perf-row { grid-template-columns: 1fr !important; }
+    .pred-stat-grid { grid-template-columns: 1fr !important; }
+    .pred-meta-row { grid-template-columns: 1fr !important; }
+    .perf-row { grid-template-columns: 1fr 1fr !important; }
 }
 @media (max-width: 480px) {
-    .sticky-input-wrap div[data-testid="column"] {
-        flex: 1 1 100% !important; width: 100% !important;
-    }
+    div[data-testid="column"] .stButton > button { min-height: 48px !important; }
 }
 """
+
+
+def render_app_load_ok_html() -> str:
+    return '<div class="app-load-ok">✅ 앱 로딩 완료</div>'
 
 
 def mobile_pro_open() -> str:

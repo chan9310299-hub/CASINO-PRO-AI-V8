@@ -165,7 +165,7 @@ class V11LayoutTests(unittest.TestCase):
 
     def test_prediction_after_input_buttons(self):
         main = self.app_source.split("# --- App ---")[1]
-        btn_idx = main.find("render_input_buttons(db)")
+        btn_idx = main.find("render_input_buttons")
         pred_idx = main.find("render_v10_prediction_card")
         self.assertGreater(btn_idx, 0)
         self.assertGreater(pred_idx, btn_idx)
