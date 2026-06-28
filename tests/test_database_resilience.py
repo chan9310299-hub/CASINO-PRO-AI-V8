@@ -72,8 +72,9 @@ class DatabaseResilienceTests(unittest.TestCase):
             with mock.patch("database._connect_postgresql", side_effect=Exception("fail")):
                 db = Database()
                 status = db.get_db_status()
-                self.assertEqual(status["db_engine"], "PostgreSQL")
-                self.assertTrue(status["cloud_configured"])
+                self.assertTrue(status["cloud_fallback"])
+                self.assertEqual(status["db_engine"], "SQLite")
+                self.assertIn("임시", status["status"])
                 db.close()
 
     def test_consume_runtime_error_clears_message(self):

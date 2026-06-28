@@ -11,16 +11,41 @@ sys.path.insert(0, str(APP_DIR))
 from database import Database, CLOUD_DB_ERROR_MSG
 
 
-class CloudNoSqliteFallbackTests(unittest.TestCase):
-    def test_database_url_set_never_opens_sqlite(self):
-        with mock.patch("database.resolve_database_url", return_value="postgresql://u:p@h/db"):
+class CloudSqliteFallbackTests(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = os.path.join(self._tmpdir.name, "test.db")
+        self._path_patches = [
+            mock.patch("config.DB_PATH", Path(self.db_path)),
+            mock.patch("database.DB_PATH", Path(self.db_path)),
+        ]
+        for p in self._path_patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self._path_patches:
+            p.stop()
+        self._tmpdir.cleanup()
+
+    def test_bad_database_url_falls_back_to_sqlite(self):
+        with mock.patch("database.resolve_database_url", return_value="postgresql://bad:bad@invalid/db"):
             with mock.patch("database._connect_postgresql", side_effect=Exception("connect fail")):
-                with mock.patch("sqlite3.connect") as mock_sqlite:
-                    db = Database()
-                    mock_sqlite.assert_not_called()
-                    self.assertEqual(db.backend, "postgresql")
-                    self.assertIsNone(db.conn)
-                    self.assertEqual(db.connection_error, CLOUD_DB_ERROR_MSG)
+                db = Database()
+                self.assertEqual(db.connection_error, CLOUD_DB_ERROR_MSG)
+                self.assertTrue(db.cloud_fallback)
+                self.assertFalse(db.is_postgres)
+                self.assertIsNotNone(db.conn)
+                db.record_hand("P")
+                self.assertEqual(db.get_results(), ["P"])
+                db.close()
+
+    def test_bad_database_url_app_can_query_pattern_count(self):
+        with mock.patch("database.resolve_database_url", return_value="postgresql://bad/db"):
+            with mock.patch("database._connect_postgresql", side_effect=Exception("connect fail")):
+                db = Database()
+                count = db.get_pattern_memory_count()
+                self.assertEqual(count, 0)
+                db.close()
 
     def test_database_url_success_uses_postgres(self):
         mock_conn = mock.MagicMock()
@@ -33,6 +58,8 @@ class CloudNoSqliteFallbackTests(unittest.TestCase):
                         mock_sqlite.assert_not_called()
                         self.assertTrue(db.is_postgres)
                         self.assertIsNone(db.connection_error)
+                        self.assertFalse(db.cloud_fallback)
+                        db.close()
 
 
 class CloudAliasMethodTests(unittest.TestCase):
@@ -68,6 +95,28 @@ class CloudAliasMethodTests(unittest.TestCase):
         self.db.record_hand("B")
         self.db.undo_last()
         self.assertEqual(self.db.get_results(), ["P"])
+
+
+class PatternRankingResilienceTests(unittest.TestCase):
+    def test_pattern_ranking_survives_db_error(self):
+        from ai.pattern_ranking import has_enough_pattern_data, rank_patterns
+
+        bad_db = mock.MagicMock()
+        bad_db.get_pattern_memory_count.side_effect = Exception("db down")
+        self.assertFalse(has_enough_pattern_data(bad_db))
+
+        bad_db.get_pattern_memory_count.side_effect = None
+        bad_db.get_pattern_memory_count.return_value = 10
+        bad_db.ensure_v6_tables.side_effect = Exception("fail")
+        self.assertEqual(rank_patterns(bad_db), [])
+
+    def test_render_pattern_ranking_has_error_guard(self):
+        source = (APP_DIR / "app.py").read_text(encoding="utf-8")
+        idx = source.index("def render_pattern_ranking")
+        block = source[idx:idx + 1400]
+        self.assertIn("try:", block)
+        self.assertIn("패턴 랭킹을 불러오지 못했습니다", block)
+        self.assertNotIn("st.exception", block)
 
 
 if __name__ == "__main__":

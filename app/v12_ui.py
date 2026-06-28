@@ -10,7 +10,15 @@ def render_cloud_storage_banner(
     connected: bool,
     connection_error: Optional[str] = None,
     cloud_configured: bool = False,
+    cloud_fallback: bool = False,
 ) -> str:
+    if connection_error and cloud_fallback:
+        return (
+            f'<div class="cloud-warn">'
+            f'⚠️ {html.escape(connection_error)}'
+            f'<br><span style="font-size:0.85em;">로컬 SQLite로 임시 저장 중입니다.</span>'
+            f'</div>'
+        )
     if connection_error:
         return (
             f'<div class="cloud-error-banner">'
@@ -42,8 +50,12 @@ def render_v12_db_status_card(status: Dict[str, Any]) -> str:
     connection_error = status.get("connection_error")
     db_engine = status.get("db_engine") or ""
     cloud_configured = status.get("cloud_configured") or db_engine == "PostgreSQL"
+    cloud_fallback = status.get("cloud_fallback")
     cloud = status.get("cloud_connected") or status.get("storage_mode") == "cloud"
-    if connection_error and cloud_configured:
+    if connection_error and cloud_fallback:
+        mode = "클라우드 DB 연결 실패 — 로컬 SQLite 임시 사용"
+        cloud_label = "임시 로컬 저장"
+    elif connection_error and cloud_configured:
         mode = "PostgreSQL — 연결 실패"
         cloud_label = "연결 안 됨"
     elif connection_error:

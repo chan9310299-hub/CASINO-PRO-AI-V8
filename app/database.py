@@ -139,6 +139,7 @@ class Database:
     def __init__(self, force_sqlite: bool = False):
         self.connection_error: Optional[str] = None
         self.runtime_error: Optional[str] = None
+        self.cloud_fallback: bool = False
         self.conn = None
         self.database_url = None
         self._pg_driver: Optional[str] = None
@@ -147,27 +148,37 @@ class Database:
         url = resolve_database_url(force_sqlite=force_sqlite)
         if url:
             self.database_url = url
-            self.backend = "postgresql"
             try:
                 self.conn, self._pg_driver = _connect_postgresql(url)
+                self.backend = "postgresql"
                 self._bootstrap_postgres()
+                return
             except Exception:
                 self.connection_error = CLOUD_DB_ERROR_MSG
+                self.cloud_fallback = True
                 self.conn = None
-            return
 
         self._init_sqlite()
 
     def _init_sqlite(self) -> None:
         self.backend = "sqlite"
-        self.conn = sqlite3.connect(DB_PATH)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            self.conn = sqlite3.connect(DB_PATH)
+            self.conn.row_factory = sqlite3.Row
+            self.conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            self.conn = None
+            if not self.connection_error:
+                self.connection_error = "로컬 SQLite 연결 실패"
+            return
         try:
             run_migrations(self.conn, backup_fn=backup_database)
         except Exception:
             pass
-        self.init_db()
+        try:
+            self.init_db()
+        except Exception:
+            pass
         try:
             self.ensure_v5_tables()
         except Exception:
@@ -182,15 +193,13 @@ class Database:
             pass
 
     def _check_connected(self) -> bool:
-        if self.connection_error:
-            return False
         return self.conn is not None
 
     def _require_conn(self) -> None:
-        if self.connection_error:
-            raise DatabaseConnectionError(self.connection_error)
         if not self.conn:
-            raise DatabaseConnectionError("DB not connected")
+            raise DatabaseConnectionError(
+                self.connection_error or "DB not connected"
+            )
 
     @property
     def is_postgres(self) -> bool:
@@ -203,6 +212,9 @@ class Database:
             cur = self.conn.cursor()
             cur.execute(_adapt_sql(sql, self.backend), tuple(params or ()))
             return cur
+        except DatabaseConnectionError:
+            self._set_runtime_error()
+            return None
         except sqlite3.ProgrammingError:
             self._safe_rollback()
             self._set_runtime_error()
@@ -254,7 +266,12 @@ class Database:
 
     @contextmanager
     def _connection(self):
-        self._require_conn()
+        try:
+            self._require_conn()
+        except DatabaseConnectionError:
+            self._set_runtime_error()
+            yield None
+            return
         try:
             yield self.conn
             if self.conn and not getattr(self.conn, "closed", False):
@@ -264,6 +281,9 @@ class Database:
                     self._safe_rollback()
                     self._set_runtime_error()
         except sqlite3.ProgrammingError:
+            self._safe_rollback()
+            self._set_runtime_error()
+        except DatabaseConnectionError:
             self._safe_rollback()
             self._set_runtime_error()
         except Exception:
@@ -478,7 +498,7 @@ class Database:
 
     def get_db_status(self):
         cloud_configured = bool(self.database_url)
-        if self.connection_error:
+        if self.connection_error and not self.conn:
             return {
                 "version": 12,
                 "target_version": 12,
@@ -490,6 +510,7 @@ class Database:
                 "storage_mode": "cloud" if cloud_configured else "local",
                 "cloud_connected": False,
                 "cloud_configured": cloud_configured,
+                "cloud_fallback": False,
                 "db_engine": "PostgreSQL" if cloud_configured else "SQLite",
                 "connection_error": self.connection_error,
                 "last_save_time": "—",
@@ -512,11 +533,18 @@ class Database:
             else:
                 status = get_migration_status(self.conn)
                 status["last_backup"] = get_last_backup_time() or "—"
-                status["storage_mode"] = "local"
+                status["storage_mode"] = "local_fallback" if self.cloud_fallback else "local"
                 status["cloud_connected"] = False
                 status["cloud_configured"] = cloud_configured
+                status["cloud_fallback"] = self.cloud_fallback
                 status["db_engine"] = "SQLite"
-                status["status"] = "로컬 SQLite 사용 중"
+                if self.cloud_fallback and self.connection_error:
+                    status["status"] = (
+                        f"{self.connection_error} — 로컬 SQLite 임시 사용"
+                    )
+                    status["connection_error"] = self.connection_error
+                else:
+                    status["status"] = "로컬 SQLite 사용 중"
             status["last_save_time"] = self.get_last_save_time()
             try:
                 status["total_input_hands"] = len(self.get_results() or [])
@@ -680,15 +708,32 @@ class Database:
 
     def ensure_adaptive_learning_tables(self, cur=None):
         """Create adaptive-learning tables if missing and seed default weights."""
-        if cur is not None:
-            self._create_adaptive_learning_tables(cur)
-            self.initialize_default_signal_weights(cur=cur)
-            return
+        try:
+            if cur is not None:
+                self._create_adaptive_learning_tables(cur)
+                self.initialize_default_signal_weights(cur=cur)
+                return
 
-        with self._connection() as conn:
-            cur = conn.cursor()
-            self._create_adaptive_learning_tables(cur)
-            self.initialize_default_signal_weights(cur=cur)
+            with self._connection() as conn:
+                if conn is None:
+                    return
+                cur = conn.cursor()
+                self._create_adaptive_learning_tables(cur)
+                self.initialize_default_signal_weights(cur=cur)
+        except DatabaseConnectionError:
+            pass
+        except Exception:
+            pass
+
+    def get_pattern_memory_count(self):
+        try:
+            self.ensure_adaptive_learning_tables()
+            row = self.query_one("SELECT COUNT(*) AS c FROM ai_pattern_memory")
+            return int((row or {}).get("c") or 0)
+        except DatabaseConnectionError:
+            return 0
+        except Exception:
+            return 0
 
     def _create_adaptive_learning_tables(self, cur):
         cur.execute(_adapt_sql("""
@@ -866,11 +911,6 @@ class Database:
             "SELECT * FROM ai_pattern_memory WHERE pattern_length = ?",
             (pattern_length,),
         )
-
-    def get_pattern_memory_count(self):
-        self.ensure_adaptive_learning_tables()
-        row = self.query_one("SELECT COUNT(*) AS c FROM ai_pattern_memory")
-        return int((row or {}).get("c") or 0)
 
     def reset_ai_learning(self):
         if not self._check_connected():

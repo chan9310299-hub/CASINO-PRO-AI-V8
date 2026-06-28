@@ -37,9 +37,11 @@ class StorageBackend:
             self._db = Database(force_sqlite=True)
         else:
             self._db = Database()
-        self._cloud = getattr(self._db, "is_postgres", False) or getattr(
-            self._db, "backend", ""
-        ) == "postgresql"
+        self._cloud = (
+            getattr(self._db, "is_postgres", False)
+            and not getattr(self._db, "cloud_fallback", False)
+            and not getattr(self._db, "connection_error", None)
+        )
 
     @property
     def db(self):
@@ -149,8 +151,9 @@ class StorageBackend:
                 last_save = "—"
         return {
             **status,
-            "storage_mode": "cloud" if self._cloud else "local",
-            "cloud_connected": self._cloud and not getattr(self._db, "connection_error", None),
+            "storage_mode": status.get("storage_mode") or ("cloud" if self._cloud else "local"),
+            "cloud_connected": self._cloud,
+            "cloud_fallback": getattr(self._db, "cloud_fallback", False),
             "connection_error": getattr(self._db, "connection_error", None),
             "total_input_hands": len(history),
             "total_ai_predictions": stats.get("total_predictions", 0),

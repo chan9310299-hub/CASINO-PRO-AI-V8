@@ -362,11 +362,14 @@ def _show_db_runtime_warning(db) -> None:
     """Show Korean DB warning instead of letting Streamlit render a traceback."""
     if db is None:
         return
+    cloud_err = getattr(db, "connection_error", None)
+    if cloud_err and getattr(db, "cloud_fallback", False):
+        st.warning(cloud_err)
     msg = getattr(db, "consume_runtime_error", lambda: None)()
     if msg:
         st.warning(msg)
-    elif getattr(db, "connection_error", None):
-        st.warning(db.connection_error)
+    elif cloud_err and not getattr(db, "cloud_fallback", False):
+        st.warning(cloud_err)
 
 
 def render_history_chips(history, limit=24):
@@ -570,29 +573,37 @@ def render_protection_mode_card(prot, enabled, low_confidence=False):
 
 
 def render_pattern_ranking(db):
-    if not has_enough_pattern_data(db):
+    try:
+        if not has_enough_pattern_data(db):
+            _md(
+                '<div class="dash-card"><div class="card-title">🏆 패턴 랭킹</div>'
+                '<div style="font-size:0.78rem;color:#94a3b8;">패턴 데이터 부족</div></div>'
+            )
+            return
+        patterns = rank_patterns(db, 20)
+        rows = ""
+        for p in patterns:
+            rows += (
+                f"<tr><td>{html.escape(p['pattern'][:24])}</td>"
+                f"<td>{p['occurrences']}</td>"
+                f"<td>{p['next_p_pct']}%</td>"
+                f"<td>{p['next_b_pct']}%</td>"
+                f"<td>{round(p['confidence'] * 100, 1)}%</td>"
+                f"<td>{html.escape(str(p['last_seen']))}</td></tr>"
+            )
+        _md(
+            f'<div class="dash-card"><div class="card-title">🏆 패턴 랭킹 (Top 20)</div>'
+            f'<table class="learn-table"><tr>'
+            f'<td>패턴</td><td>횟수</td><td>P%</td><td>B%</td><td>신뢰</td><td>최근</td></tr>'
+            f'{rows}</table></div>'
+        )
+    except Exception:
+        _show_db_runtime_warning(db)
+        st.warning("패턴 랭킹을 불러오지 못했습니다.")
         _md(
             '<div class="dash-card"><div class="card-title">🏆 패턴 랭킹</div>'
-            '<div style="font-size:0.78rem;color:#94a3b8;">패턴 데이터 부족</div></div>'
+            '<div style="font-size:0.78rem;color:#94a3b8;">패턴 데이터를 표시할 수 없습니다.</div></div>'
         )
-        return
-    patterns = rank_patterns(db, 20)
-    rows = ""
-    for p in patterns:
-        rows += (
-            f"<tr><td>{html.escape(p['pattern'][:24])}</td>"
-            f"<td>{p['occurrences']}</td>"
-            f"<td>{p['next_p_pct']}%</td>"
-            f"<td>{p['next_b_pct']}%</td>"
-            f"<td>{round(p['confidence'] * 100, 1)}%</td>"
-            f"<td>{html.escape(str(p['last_seen']))}</td></tr>"
-        )
-    _md(
-        f'<div class="dash-card"><div class="card-title">🏆 패턴 랭킹 (Top 20)</div>'
-        f'<table class="learn-table"><tr>'
-        f'<td>패턴</td><td>횟수</td><td>P%</td><td>B%</td><td>신뢰</td><td>최근</td></tr>'
-        f'{rows}</table></div>'
-    )
 
 
 def render_backtest_results(results):
@@ -1028,6 +1039,7 @@ _md(render_cloud_storage_banner(
     storage_status.get("cloud_connected", False),
     connection_error=getattr(db, "connection_error", None) or storage_status.get("connection_error"),
     cloud_configured=is_cloud_db_enabled(),
+    cloud_fallback=getattr(db, "cloud_fallback", False) or storage_status.get("cloud_fallback", False),
 ))
 _show_db_runtime_warning(db)
 
