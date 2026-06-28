@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 APP_DISPLAY_NAME = "CASINO PRO AI"
 VERSION_DISPLAY = "v11"
 SUBTITLE = "바카라 로드 분석"
+APP_LOAD_OK = "✅ 앱 로딩 완료"
 
 SIX_GRID_TITLE = "6매 GRID"
 BIG_ROAD_TITLE = "빅 로드"

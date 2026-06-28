@@ -110,9 +110,9 @@ class KoreanUIAppSourceTests(unittest.TestCase):
         self.assertIn("EXP_BACKUP", self.app_source)
 
     def test_mobile_css_sticky_and_font(self):
-        self.assertIn("sticky-input-wrap", MOBILE_CSS)
-        self.assertIn("52px", MOBILE_CSS)
+        self.assertIn("input-section", MOBILE_CSS)
         self.assertIn("position: static !important", MOBILE_CSS)
+        self.assertIn("52px", MOBILE_CSS)
         self.assertIn("Noto Sans KR", self.app_source)
 
 

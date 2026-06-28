@@ -31,6 +31,16 @@ def render_v10_header(quality_grade: str, db_status: Dict[str, Any]) -> str:
     )
 
 
+def render_v10_title_early() -> str:
+    """Minimal title shown before DB init — safe on mobile."""
+    return (
+        f'<div class="v10-header">'
+        f'<div class="v10-brand">CASINO PRO AI</div>'
+        f'<div class="v10-meta"><span>버전 v12</span><span>바카라 로드 분석</span></div>'
+        f'</div>'
+    )
+
+
 def _render_reason_rows(ai_result: Dict[str, Any]) -> str:
     top = build_top_analysis_reasons(ai_result, 5)
     rows = ""

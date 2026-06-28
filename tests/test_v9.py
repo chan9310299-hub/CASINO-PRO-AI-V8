@@ -327,15 +327,16 @@ class AccessGuardTest(unittest.TestCase):
 
 
 class MobileLayoutHelpersTest(unittest.TestCase):
-    def test_mobile_css_has_sticky(self):
-        self.assertIn("sticky-input-wrap", MOBILE_CSS)
+    def test_mobile_css_has_input_section(self):
+        self.assertIn("input-section", MOBILE_CSS)
+        self.assertIn("position: static !important", MOBILE_CSS)
 
     def test_mobile_pro_stack_helpers(self):
         self.assertIn("mobile-pro-stack", mobile_pro_open())
         self.assertEqual(mobile_pro_close(), "</div>")
 
     def test_sticky_input_helpers(self):
-        self.assertIn("sticky-input-wrap", sticky_input_open())
+        self.assertIn("input-section", sticky_input_open())
         self.assertEqual(sticky_input_close(), "</div>")
 
     def test_cloud_warning_text(self):

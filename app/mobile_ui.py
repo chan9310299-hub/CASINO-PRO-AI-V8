@@ -10,46 +10,57 @@ HOME_SCREEN_HINT = (
     "휴대폰 크롬에서 홈 화면에 추가하면 앱처럼 사용할 수 있습니다."
 )
 
+# Mobile-safe CSS: never hide .main / .block-container / stAppViewContainer.
 MOBILE_CSS = """
 @keyframes barGrow { from { width: 0; } to { width: var(--w, 50%); } }
 @keyframes fadeIn { from { opacity: 0.4; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-.stApp, .main, [data-testid="stAppViewContainer"], .block-container {
+
+.stApp, .main, [data-testid="stAppViewContainer"], .block-container,
+[data-testid="stAppViewContainer"] > section.main,
+[data-testid="stVerticalBlock"], [data-testid="stVerticalBlockBorderWrapper"],
+.mobile-pro-stack, .mobile-pro-stack > div {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
     overflow-x: hidden !important;
     overflow-y: visible !important;
     max-width: 100vw !important;
-    min-height: auto !important;
-    height: auto !important;
 }
-[data-testid="stAppViewContainer"] > section.main {
-    overflow: visible !important;
-    min-height: auto !important;
-}
+
 .app-load-ok {
     font-size: 0.75rem; color: #86efac; text-align: center;
     padding: 0.35rem 0.5rem; margin-bottom: 0.35rem;
     background: rgba(34, 197, 94, 0.12); border-radius: 8px;
     border: 1px solid rgba(34, 197, 94, 0.3);
-    position: relative; z-index: 1;
 }
 .mobile-pro-stack {
     display: flex; flex-direction: column; gap: 0.25rem; width: 100%;
     overflow-x: hidden; overflow-y: visible;
-    position: relative; z-index: 1;
+}
+
+/* Streamlit chrome only — do not target footer, section.main, or block-container */
+#MainMenu, [data-testid="stToolbar"], [data-testid="stToolbarActions"],
+.stDeployButton, .stAppDeployButton {
+    display: none !important;
 }
 header[data-testid="stHeader"] {
-    visibility: hidden !important; height: 0 !important;
-    min-height: 0 !important; padding: 0 !important; margin: 0 !important;
+    background: transparent !important;
+    height: auto !important;
+    min-height: 0 !important;
 }
-#MainMenu, .stDeployButton,
-[data-testid="stToolbar"], [data-testid="stToolbarActions"],
-a[data-testid="stBaseLinkButton-header"], .stAppDeployButton,
-iframe[title="GitHub"] { display: none !important; visibility: hidden !important; }
-footer, [data-testid="stStatusWidget"] {
-    visibility: hidden !important; max-height: 1.5rem !important;
-    overflow: hidden !important; opacity: 0.01 !important;
-    pointer-events: none !important; margin: 0 !important; padding: 0 !important;
+
+.input-section, .prediction-section,
+.sticky-input-wrap, .sticky-prediction-wrap {
+    position: static !important;
+    top: auto !important;
+    z-index: auto !important;
+    background: transparent;
+    padding: 0; margin-bottom: 0.15rem;
 }
-a[href*="github.com/streamlit"] { display: none !important; }
+
 .v10-header {
     background: rgba(16, 24, 40, 0.95); border: 1px solid rgba(62, 140, 255, 0.25);
     border-radius: 14px; padding: 0.55rem 0.65rem; margin-bottom: 0.35rem;
@@ -57,16 +68,6 @@ a[href*="github.com/streamlit"] { display: none !important; }
 }
 .v10-brand { font-size: 1.15rem; font-weight: 800; color: #5ecbff; margin-bottom: 0.25rem; }
 .v10-meta { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; font-size: 0.78rem; color: #94a3b8; }
-.sticky-input-wrap {
-    position: sticky; top: 0; z-index: 50;
-    background: rgba(7, 11, 20, 0.98); backdrop-filter: blur(8px);
-    padding: 0.15rem 0 0.25rem; margin-bottom: 0.15rem;
-}
-.sticky-prediction-wrap {
-    position: sticky; top: 0; z-index: 40;
-    background: rgba(7, 11, 20, 0.97); backdrop-filter: blur(10px);
-    padding-bottom: 0.15rem; margin-bottom: 0.15rem;
-}
 .v10-pred-card { padding: 0.75rem 0.8rem !important; }
 .pred-animate { animation: fadeIn 0.35s ease-out; }
 .pred-label-sm { font-size: 0.78rem; color: #94a3b8; text-align: center; margin-bottom: 0.15rem; }
@@ -85,7 +86,8 @@ a[href*="github.com/streamlit"] { display: none !important; }
 .pred-stat-v { font-size: 0.95rem; font-weight: 800; color: #e2e8f0; }
 .bar-label { font-size: 0.72rem; color: #94a3b8; margin: 0.25rem 0 0.12rem; }
 .anim-bar-wrap {
-    height: 8px; background: rgba(30,41,59,0.9); border-radius: 999px; overflow: hidden;
+    height: 8px; background: rgba(30,41,59,0.9); border-radius: 999px;
+    overflow-x: hidden; overflow-y: visible;
 }
 .anim-bar-wrap.mini { height: 6px; margin-top: 4px; }
 .anim-bar {
@@ -118,13 +120,11 @@ a[href*="github.com/streamlit"] { display: none !important; }
 }
 .v12-db-card { margin-bottom: 0.35rem !important; }
 .v10-perf-row { grid-template-columns: repeat(3, 1fr) !important; }
+
 @media (max-width: 768px) {
-    .block-container { padding: 0.25rem 0.35rem 0.35rem !important; }
+    .block-container { padding: 0.25rem 0.35rem 1rem !important; }
     .dash-card { padding: 0.55rem 0.6rem !important; margin-bottom: 0.3rem !important; width: 100%; box-sizing: border-box; }
     .card-title { font-size: 0.9rem !important; text-transform: none !important; }
-    .sticky-input-wrap, .sticky-prediction-wrap {
-        position: static !important; z-index: auto !important; top: auto !important;
-    }
     .mobile-pro-stack div[data-testid="stHorizontalBlock"] {
         flex-direction: column !important; flex-wrap: nowrap !important;
     }
@@ -145,7 +145,7 @@ a[href*="github.com/streamlit"] { display: none !important; }
     .v10-perf-row { grid-template-columns: 1fr !important; }
     .pred-stat-grid { grid-template-columns: 1fr !important; }
     .pred-meta-row { grid-template-columns: 1fr !important; }
-    .perf-row { grid-template-columns: 1fr 1fr !important; }
+    .perf-row { grid-template-columns: 1fr !important; }
 }
 @media (max-width: 480px) {
     div[data-testid="column"] .stButton > button { min-height: 48px !important; }
@@ -165,20 +165,36 @@ def mobile_pro_close() -> str:
     return '</div>'
 
 
+def input_section_open() -> str:
+    return '<div class="input-section">'
+
+
+def input_section_close() -> str:
+    return '</div>'
+
+
+def prediction_section_open() -> str:
+    return '<div class="prediction-section">'
+
+
+def prediction_section_close() -> str:
+    return '</div>'
+
+
 def sticky_prediction_open() -> str:
-    return '<div class="sticky-prediction-wrap">'
+    return prediction_section_open()
 
 
 def sticky_prediction_close() -> str:
-    return '</div>'
+    return prediction_section_close()
 
 
 def sticky_input_open() -> str:
-    return '<div class="sticky-input-wrap">'
+    return input_section_open()
 
 
 def sticky_input_close() -> str:
-    return '</div>'
+    return input_section_close()
 
 
 def render_cloud_warning_html() -> str:

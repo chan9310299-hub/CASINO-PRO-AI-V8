@@ -45,6 +45,7 @@ from v10_ui import (
     render_v10_header,
     render_v10_home_stats,
     render_v10_prediction_card,
+    render_v10_title_early,
 )
 from bigroad import BigRoadEngine
 from roadmap_ai import RoadmapAI
@@ -192,10 +193,15 @@ def inject_dashboard_css():
 }
 .block-container {
     padding-top: 0.65rem; padding-bottom: 0.45rem; max-width: 100%;
+    display: block !important; visibility: visible !important; opacity: 1 !important;
     overflow-x: hidden; overflow-y: visible; min-height: auto; height: auto;
 }
+.main, [data-testid="stAppViewContainer"], [data-testid="stAppViewContainer"] > section.main {
+    display: block !important; visibility: visible !important; opacity: 1 !important;
+    height: auto !important; min-height: auto !important; overflow: visible !important;
+}
 header[data-testid="stHeader"] { background: transparent; }
-#MainMenu, footer, .stDeployButton { visibility: hidden; }
+#MainMenu, .stDeployButton { display: none; }
 .card-title { text-transform: none; letter-spacing: 0; }
 .dash-title {
     font-size: 1.55rem; font-weight: 800; margin: 0 0 0.35rem 0;
@@ -302,7 +308,7 @@ header[data-testid="stHeader"] { background: transparent; }
     background: rgba(30, 20, 20, 0.55); border: 1px solid rgba(255, 120, 80, 0.25);
     color: #f0a898; font-size: 0.7rem; text-align: center;
 }
-.road-scroll, .six-scroll { width: 100%; overflow-x: auto; overflow-y: hidden; }
+.road-scroll, .six-scroll { width: 100%; overflow-x: auto; overflow-y: visible; }
 .road-wrap, .six-wrap {
     display: grid;
     grid-auto-flow: row;
@@ -1018,6 +1024,10 @@ if "backtest_results" not in st.session_state:
 
 _md(render_app_load_ok_html())
 _md(mobile_pro_open())
+try:
+    _md(render_v10_title_early())
+except Exception:
+    st.warning("앱 제목을 표시할 수 없습니다.")
 
 db = None
 storage_status = {}
@@ -1126,16 +1136,16 @@ except Exception:
     home_stats = {}
 
 try:
-    _md(render_v10_header(grade, db_status))
-except Exception:
-    pass
-
-try:
     _md(sticky_prediction_open())
     _md(render_v10_prediction_card(pred, conf, ai_result))
     _md(sticky_prediction_close())
 except Exception:
     st.warning("예측 카드를 표시할 수 없습니다.")
+
+try:
+    _md(render_v10_header(grade, db_status))
+except Exception:
+    pass
 
 _safe_section("BIG ROAD", render_bigroad, bigroad)
 _safe_section("6매", render_six_grid, history)
